@@ -1,9 +1,8 @@
 import { TreeMatcher, getParser, treeWalk, nodeGetAttr, nodeExtractText, nodeFindFirstDescendant, nodeExtractNodeTexts } from '@arijs/stream-xml-parser'
 import type { TorrentItem } from '@shared/types'
 import { buildMatchCandidates, extractResolution, sanitizePathSegment } from './normalizeService'
+import { buildNyaaQueryUrl } from './nyaaQueryService'
 import { withRetry } from './retryService'
-
-const nyaaQueryUrl = (page: number) => `https://nyaa.si/?f=0&c=1_2&q=Erai-raws+-HEVC&p=${page}`
 
 type UnknownRecord = Record<string, unknown>
 
@@ -94,8 +93,8 @@ function parseRow(rowNode: unknown, page: number, elAdapter: AdapterLike): Torre
 	}
 }
 
-export async function fetchNyaaPage(page: number): Promise<string> {
-	const response = await withRetry(async () => fetch(nyaaQueryUrl(page), {
+export async function fetchNyaaPage(page: number, customQuery?: string): Promise<string> {
+	const response = await withRetry(async () => fetch(buildNyaaQueryUrl(page, customQuery), {
 		headers: {
 			'user-agent': 'Mozilla/5.0 (compatible; NYAADL/1.0; +https://github.com)',
 			'accept-language': 'en-US,en;q=0.9',
@@ -107,8 +106,8 @@ export async function fetchNyaaPage(page: number): Promise<string> {
 	return response.text()
 }
 
-export async function scrapeNyaaPage(pageNumber: number): Promise<{ html: string; items: TorrentItem[] }> {
-	const html = await fetchNyaaPage(pageNumber)
+export async function scrapeNyaaPage(pageNumber: number, customQuery?: string): Promise<{ html: string; items: TorrentItem[] }> {
+	const html = await fetchNyaaPage(pageNumber, customQuery)
 	const { items } = await scrapeNyaaPageHtml({ pageNumber, html })
 	return { html, items }
 }

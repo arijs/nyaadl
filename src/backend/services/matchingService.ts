@@ -51,6 +51,14 @@ export function matchTorrentToWatchTargets(item: TorrentMatchResult, watchTarget
 	return undefined
 }
 
+export function isTorrentBlacklisted(item: TorrentMatchResult, blacklist: string[]): boolean {
+	if (blacklist.includes(item.normalizedKey)) {
+		return true
+	}
+
+	return item.matchCandidates.some((candidate) => blacklist.includes(buildNormalizedKey(candidate, item.resolution)))
+}
+
 export function toTorrentItem(base: {
 	torrentId: string
 	title: string

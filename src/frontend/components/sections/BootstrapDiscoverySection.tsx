@@ -54,23 +54,41 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 						<span class="ml-2 text-xs font-normal text-amber-300">(Item pending)</span>
 					</Show>
 				</h2>
-				<Show
-					when={props.bootstrap()}
-					fallback={(
-						<div class="ml-2 flex flex-wrap items-center gap-2">
-							<ActionButton label="Rescan watchlist" onClick={props.dashboardActions.rescanWatchlist} compact />
-							<ActionButton label="Start scraping" onClick={props.bootstrapWorkflow.runBootstrapDiscoveryStep} compact />
-						</div>
-					)}
-				>
-					<button
-						type="button"
-						class="rounded-full border border-slate-300/30 bg-slate-300/10 px-2 py-0.5 text-xs text-slate-100 ml-2"
-						onClick={() => setCollapsed((c) => !c)}
+				<div class="ml-2 flex flex-wrap items-center gap-2">
+					<label class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-200">
+						<span class="text-slate-300">Query</span>
+						<input
+							type="text"
+							value={props.bootstrapWorkflow.bootstrapQueryDraft()}
+							onInput={(event) => props.bootstrapWorkflow.setBootstrapQueryDraft(event.currentTarget.value)}
+							placeholder="e.g. Erai-raws -HEVC"
+							class="min-w-56 border-none bg-transparent text-xs text-slate-100 outline-none placeholder:text-slate-400"
+						/>
+					</label>
+					<ActionButton
+						label="Search"
+						onClick={props.bootstrapWorkflow.submitBootstrapQuery}
+						disabled={props.bootstrapWorkflow.isBootstrapQuerySubmitDisabled()}
+						compact
+					/>
+					<Show
+						when={props.bootstrap()}
+						fallback={(
+							<>
+								<ActionButton label="Rescan watchlist" onClick={props.dashboardActions.rescanWatchlist} compact />
+								<ActionButton label="Start scraping" onClick={props.bootstrapWorkflow.runDefaultBootstrapDiscovery} compact />
+							</>
+						)}
 					>
-						{collapsed() ? 'Expand' : 'Collapse'}
-					</button>
-				</Show>
+						<button
+							type="button"
+							class="rounded-full border border-slate-300/30 bg-slate-300/10 px-2 py-0.5 text-xs text-slate-100"
+							onClick={() => setCollapsed((c) => !c)}
+						>
+							{collapsed() ? 'Expand' : 'Collapse'}
+						</button>
+					</Show>
+				</div>
 			</div>
 			<Show when={collapsed()}>
 				<Show when={props.bootstrap()}>
@@ -84,6 +102,7 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 							<div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
 								<div class="space-y-1">
 									<p>Bootstrap discovery: {bootstrap().found ? 'checkpoint found' : 'not found yet'}</p>
+									<p>Query: {bootstrap().customQuery ?? 'default'}</p>
 									<p>Mode: {bootstrap().mode ?? 'n/a'}</p>
 									<p>{bootstrap().reason}</p>
 									<p>Pages scanned: {bootstrap().pagesScanned} · inspected torrents: {bootstrap().inspectedCount}</p>

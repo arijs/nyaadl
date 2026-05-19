@@ -141,6 +141,8 @@ export interface QbittorrentAddApiResponseItem {
 export interface BootstrapDiscoveryResult {
 	startedAtUtc: string
 	finishedAtUtc: string
+	customQuery?: string
+	queryKey?: string
 	pagesScanned: number
 	inspectedCount: number
 	found: boolean

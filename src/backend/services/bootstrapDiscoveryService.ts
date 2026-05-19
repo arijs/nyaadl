@@ -18,8 +18,9 @@ import {
 } from './decisionWorkflowService'
 import { downloadTorrentFile, findDownloadedTorrentFileById } from './downloaderService'
 import { findExistingLocalMatchByTitle, type ExistingLocalMatch } from './localLibraryService'
-import { buildTorrentMatchResult, matchTorrentToWatchTargets } from './matchingService'
+import { buildTorrentMatchResult, isTorrentBlacklisted, matchTorrentToWatchTargets } from './matchingService'
 import { scrapeNyaaPage } from './nyaaScraperServiceStream'
+import { buildNyaaQueryKey, normalizeNyaaQuery } from './nyaaQueryService'
 import { inspectAndClassifyTorrent, savePageSnapshot } from './nyaaTorrentService'
 import {
 	blacklistState,
@@ -43,6 +44,7 @@ interface BootstrapDiscoverStepBody {
 	itemIndex?: number
 	cursorToken?: string
 	qbForceResubmit?: boolean
+	customQuery?: string
 }
 
 function buildBootstrapSummary(
@@ -283,6 +285,8 @@ async function processBootstrapItem(
 	item: TorrentItem,
 	itemIndex: number,
 	page: number,
+	customQuery: string | undefined,
+	queryKey: string,
 	pageItemCount: number,
 	aliases: Record<string, string>,
 	startedAtUtc: string,
@@ -332,7 +336,7 @@ async function processBootstrapItem(
 	const quickMatch = buildTorrentMatchResult({ title: item.title, videoNames: [] }, aliases)
 	const titleMatchedTarget = matchTorrentToWatchTargets(quickMatch, watchTargetsState)
 
-	if (blacklistState.includes(quickMatch.normalizedKey)) {
+	if (isTorrentBlacklisted(quickMatch, blacklistState)) {
 		const decision = createDecisionRecord(
 			{ ...item, seriesBaseRaw: quickMatch.seriesBaseRaw, resolution: quickMatch.resolution, matchCandidates: quickMatch.matchCandidates },
 			'blocked',
@@ -431,6 +435,8 @@ async function processBootstrapItem(
 		const result: BootstrapDiscoveryResult = {
 			startedAtUtc,
 			finishedAtUtc: new Date().toISOString(),
+			customQuery,
+			queryKey,
 			pagesScanned: 1,
 			inspectedCount: inspectedCount + 1,
 			found: false,
@@ -506,6 +512,8 @@ export async function discoverLastDownloadedCheckpointStep(
 	const page = input?.page && Number.isInteger(input.page) && input.page > 0 ? input.page : 1
 	const startItemIndex = input?.itemIndex && Number.isInteger(input.itemIndex) && input.itemIndex >= 0 ? input.itemIndex : 0
 	const qbForceResubmit = input?.qbForceResubmit === true
+	const customQuery = normalizeNyaaQuery(input?.customQuery)
+	const queryKey = buildNyaaQueryKey(customQuery)
 	const pagesScanned = 1
 	let inspectedCount = 0
 	const autoApproved: BootstrapAutoDecisionSummary[] = []
@@ -524,6 +532,8 @@ export async function discoverLastDownloadedCheckpointStep(
 		const result: BootstrapDiscoveryResult = {
 			startedAtUtc,
 			finishedAtUtc: new Date().toISOString(),
+			customQuery,
+			queryKey,
 			pagesScanned,
 			inspectedCount,
 			found: false,
@@ -543,10 +553,10 @@ export async function discoverLastDownloadedCheckpointStep(
 		return result
 	}
 
-	const { html, items } = await scrapeNyaaPage(page)
-	await savePageSnapshot(page, html, items)
+	const { html, items } = await scrapeNyaaPage(page, customQuery)
+	await savePageSnapshot(page, html, items, customQuery)
 	const nyaaResultsStats = parseNyaaResultsStats(html)
-	const pageCursorToken = `${page}:${items.length}:${items[0]?.torrentId ?? 'none'}:${items[items.length - 1]?.torrentId ?? 'none'}`
+	const pageCursorToken = `${queryKey}:${page}:${items.length}:${items[0]?.torrentId ?? 'none'}:${items[items.length - 1]?.torrentId ?? 'none'}`
 
 	if (startItemIndex > 0 && input?.cursorToken && input.cursorToken !== pageCursorToken) {
 		throw badRequest('Bootstrap cursor became stale. Restart from itemIndex 0 for this page.')
@@ -556,6 +566,8 @@ export async function discoverLastDownloadedCheckpointStep(
 		const result: BootstrapDiscoveryResult = {
 			startedAtUtc,
 			finishedAtUtc: new Date().toISOString(),
+			customQuery,
+			queryKey,
 			pagesScanned,
 			inspectedCount,
 			found: false,
@@ -586,6 +598,8 @@ export async function discoverLastDownloadedCheckpointStep(
 			item,
 			itemIndex,
 			page,
+			customQuery,
+			queryKey,
 			items.length,
 			aliases,
 			startedAtUtc,
@@ -602,6 +616,8 @@ export async function discoverLastDownloadedCheckpointStep(
 		)
 		inspectedCount += itemCount
 		if (result) {
+			setBootstrapDiscoveryState(result)
+			await saveBootstrapDiscovery(result)
 			return result
 		}
 	}
@@ -609,6 +625,8 @@ export async function discoverLastDownloadedCheckpointStep(
 	const result: BootstrapDiscoveryResult = {
 		startedAtUtc,
 		finishedAtUtc: new Date().toISOString(),
+		customQuery,
+		queryKey,
 		pagesScanned,
 		inspectedCount,
 		found: false,

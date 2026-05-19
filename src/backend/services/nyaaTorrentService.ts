@@ -4,8 +4,9 @@ import { dataRoot, ensureDirectory } from '../storage/jsonStore'
 import type { DecisionStatus, TorrentItem, WatchTarget } from '@shared/types'
 import { buildTorrentVideoFiles, findExistingLocalMatch } from './localLibraryService'
 import { buildMatchCandidates } from './normalizeService'
+import { buildNyaaSnapshotFolderName } from './nyaaQueryService'
 import { parseTorrentMetainfo } from './torrentMetainfoService'
-import { buildTorrentMatchResult, matchTorrentToWatchTargets } from './matchingService'
+import { buildTorrentMatchResult, isTorrentBlacklisted, matchTorrentToWatchTargets } from './matchingService'
 import { withRetry } from './retryService'
 
 const nyaaBaseUrl = 'https://nyaa.si'
@@ -39,7 +40,7 @@ export async function inspectAndClassifyTorrent(item: TorrentItem, aliases: Reco
 	const torrentVideoFiles = buildTorrentVideoFiles(internalNames, metainfo.files)
 	const matchResult = buildTorrentMatchResult({ title: item.title, videoNames: internalNames }, aliases)
 	const matchCandidates = buildMatchCandidates(item.title, internalNames)
-	const blacklistHit = blacklist.includes(matchResult.normalizedKey)
+	const blacklistHit = isTorrentBlacklisted({ ...matchResult, matchCandidates }, blacklist)
 	const matchedTarget = matchTorrentToWatchTargets({ ...matchResult, matchCandidates }, watchTargets)
 
 	if (matchedTarget) {
@@ -78,9 +79,9 @@ export async function inspectAndClassifyTorrent(item: TorrentItem, aliases: Reco
 	return { ...item, seriesBaseRaw: matchResult.seriesBaseRaw, resolution: matchResult.resolution, matchCandidates, status: 'pending', reason: 'requires approval', seriesKey: matchResult.seriesKey, internalNames }
 }
 
-export async function savePageSnapshot(page: number, html: string, items: TorrentItem[]): Promise<void> {
+export async function savePageSnapshot(page: number, html: string, items: TorrentItem[], customQuery?: string): Promise<void> {
 	const datePrefix = new Date().toISOString().slice(0, 10)
-	const archiveRoot = path.join(dataRoot, '..', 'torrents', `page-${datePrefix}-${page}`)
+	const archiveRoot = path.join(dataRoot, '..', 'torrents', buildNyaaSnapshotFolderName(datePrefix, page, customQuery))
 	await ensureDirectory(archiveRoot)
 	await writeFile(path.join(archiveRoot, 'snapshot.html'), html, 'utf8')
 	await writeFile(path.join(archiveRoot, 'snapshot.json'), `${JSON.stringify(items, null, 2)}\n`, 'utf8')

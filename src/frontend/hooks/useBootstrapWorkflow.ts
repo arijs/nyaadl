@@ -16,8 +16,13 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 	const [bootstrapCursor, setBootstrapCursor] = createSignal<BootstrapCursor | undefined>(undefined)
 	const [bootstrapMessage, setBootstrapMessage] = createSignal('')
 	const [bootstrapRetryPage, setBootstrapRetryPage] = createSignal<number | undefined>(undefined)
+	const [bootstrapQueryDraft, setBootstrapQueryDraft] = createSignal('')
 	const [qbForceResubmit, setQbForceResubmit] = createSignal(false)
 	const [queueActionErrors, setQueueActionErrors] = createSignal<Record<string, string>>({})
+
+	const normalizeQuery = (value: string | undefined): string => value?.trim().replace(/\s+/g, ' ') ?? ''
+	const getActiveCustomQuery = () => normalizeQuery(options.status()?.data.status.lastBootstrapDiscovery?.customQuery)
+	const isBootstrapQuerySubmitDisabled = () => normalizeQuery(bootstrapQueryDraft()).length === 0
 
 	createEffect(() => {
 		const lastDiscovery = options.status()?.data.status.lastBootstrapDiscovery
@@ -29,6 +34,10 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 			})
 		} else if (!lastDiscovery || typeof lastDiscovery.nextPage !== 'number') {
 			setBootstrapCursor(undefined)
+		}
+
+		if (normalizeQuery(bootstrapQueryDraft()).length === 0) {
+			setBootstrapQueryDraft(lastDiscovery?.customQuery ?? '')
 		}
 	})
 
@@ -47,14 +56,16 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 		})
 	}
 
-	async function runBootstrapDiscoveryStep(cursorOverride?: BootstrapCursor) {
+	async function runBootstrapDiscoveryStep(cursorOverride?: BootstrapCursor, customQueryOverride?: string) {
 		try {
 			setBootstrapMessage('')
 			setBootstrapRetryPage(undefined)
 			const requestCursor = cursorOverride ?? bootstrapCursor()
+			const activeCustomQuery = normalizeQuery(customQueryOverride ?? getActiveCustomQuery())
 			const response = await requestJson<{ result: BootstrapDiscoveryResult }>('/api/bootstrap/discover-last-downloaded', 'POST', {
 				...(requestCursor ?? {}),
 				qbForceResubmit: qbForceResubmit(),
+				customQuery: activeCustomQuery.length > 0 ? activeCustomQuery : undefined,
 			})
 			const result = response.data.result
 			const nextPage = response.data.result.nextPage
@@ -68,7 +79,7 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 			options.appendLogEntry({
 				timestampUtc: new Date().toISOString(),
 				kind: 'step',
-				message: `mode=${result.mode ?? 'n/a'} | approved ${approvedCount} | rejected ${rejectedCount} | already ${alreadyCount} | backfilled ${backfilledCount} | pending ${pendingCount}${result.actionItem ? ` | review: ${result.actionItem.item.title}` : ''}`,
+				message: `query=${result.customQuery ?? 'default'} | mode=${result.mode ?? 'n/a'} | approved ${approvedCount} | rejected ${rejectedCount} | already ${alreadyCount} | backfilled ${backfilledCount} | pending ${pendingCount}${result.actionItem ? ` | review: ${result.actionItem.item.title}` : ''}`,
 				page: result.currentPage,
 				itemIndex: result.currentItemIndex,
 			})
@@ -104,6 +115,42 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 				message: errorMessage,
 			})
 		}
+	}
+
+	async function clearBootstrapForQuerySwitch(reason: string) {
+		setBootstrapCursor(undefined)
+		setBootstrapMessage('')
+		setBootstrapRetryPage(undefined)
+		await postJson('/api/bootstrap/discovery/clear')
+		options.appendLogEntry({
+			timestampUtc: new Date().toISOString(),
+			kind: 'action',
+			message: reason,
+		})
+	}
+
+	async function submitBootstrapQuery() {
+		const submittedQuery = normalizeQuery(bootstrapQueryDraft())
+		if (submittedQuery.length === 0) {
+			return
+		}
+
+		const activeQuery = getActiveCustomQuery()
+		if (submittedQuery.toLowerCase() !== activeQuery.toLowerCase()) {
+			await clearBootstrapForQuerySwitch(`discover status cleared; query switched to "${submittedQuery}"`)
+		}
+
+		await runBootstrapDiscoveryStep({ page: 1, itemIndex: 0 }, submittedQuery)
+	}
+
+	async function runDefaultBootstrapDiscovery() {
+		if (getActiveCustomQuery().length > 0) {
+			await clearBootstrapForQuerySwitch('discover status cleared; query switched to default')
+			await runBootstrapDiscoveryStep({ page: 1, itemIndex: 0 }, undefined)
+			return
+		}
+
+		await runBootstrapDiscoveryStep()
 	}
 
 	async function runBootstrapDiscoveryForPage(page: number) {
@@ -229,10 +276,15 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 		bootstrapCursor,
 		bootstrapMessage,
 		bootstrapRetryPage,
+		bootstrapQueryDraft,
+		setBootstrapQueryDraft,
+		isBootstrapQuerySubmitDisabled,
 		qbForceResubmit,
 		setQbForceResubmit,
 		getQueueActionError,
 		runBootstrapDiscoveryStep,
+		runDefaultBootstrapDiscovery,
+		submitBootstrapQuery,
 		runBootstrapDiscoveryForPage,
 		clearBootstrapDiscoveryStatus,
 		retryBootstrapCurrentPage,

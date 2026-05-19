@@ -63,6 +63,7 @@ interface BootstrapDiscoverStepBody {
 	itemIndex?: number
 	cursorToken?: string
 	qbForceResubmit?: boolean
+	customQuery?: string
 }
 
 interface QbittorrentConfigBody {
