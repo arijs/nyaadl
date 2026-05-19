@@ -9,6 +9,7 @@ interface UseBootstrapWorkflowOptions {
 	status: Accessor<StatusResponse | undefined>
 	refetch: () => unknown | Promise<unknown>
 	appendLogEntry: (entry: { timestampUtc: string; kind: 'step' | 'action' | 'error'; message: string; page?: number; itemIndex?: number }) => void
+	onBlacklistChanged?: () => unknown | Promise<unknown>
 }
 
 export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
@@ -46,12 +47,13 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 		})
 	}
 
-	async function runBootstrapDiscoveryStep() {
+	async function runBootstrapDiscoveryStep(cursorOverride?: BootstrapCursor) {
 		try {
 			setBootstrapMessage('')
 			setBootstrapRetryPage(undefined)
+			const requestCursor = cursorOverride ?? bootstrapCursor()
 			const response = await requestJson<{ result: BootstrapDiscoveryResult }>('/api/bootstrap/discover-last-downloaded', 'POST', {
-				...(bootstrapCursor() ?? {}),
+				...(requestCursor ?? {}),
 				qbForceResubmit: qbForceResubmit(),
 			})
 			const result = response.data.result
@@ -102,6 +104,11 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 				message: errorMessage,
 			})
 		}
+	}
+
+	async function runBootstrapDiscoveryForPage(page: number) {
+		const targetPage = Math.max(1, Math.floor(page))
+		await runBootstrapDiscoveryStep({ page: targetPage, itemIndex: 0 })
 	}
 
 	async function clearBootstrapDiscoveryStatus() {
@@ -155,6 +162,8 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 			})
 			if (params.continueDiscovery) {
 				await runBootstrapDiscoveryStep()
+			} else if (params.action === 'blacklist') {
+				await Promise.resolve(options.onBlacklistChanged?.())
 			}
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : `Failed to ${params.action} torrent`
@@ -224,6 +233,7 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 		setQbForceResubmit,
 		getQueueActionError,
 		runBootstrapDiscoveryStep,
+		runBootstrapDiscoveryForPage,
 		clearBootstrapDiscoveryStatus,
 		retryBootstrapCurrentPage,
 		resolveBootstrapAction,

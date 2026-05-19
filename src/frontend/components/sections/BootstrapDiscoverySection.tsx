@@ -1,12 +1,14 @@
 import { createSignal, For, Show } from 'solid-js'
 import type { Accessor } from 'solid-js'
 import type { BootstrapDiscoveryResult } from '../../../shared/types'
+import type { useDashboardActions } from '../../hooks/useDashboardActions'
 import type { useBootstrapWorkflow } from '../../hooks/useBootstrapWorkflow'
 import ActionButton from '../ui/ActionButton'
 
 interface BootstrapDiscoverySectionProps {
 	bootstrap: Accessor<BootstrapDiscoveryResult | undefined>
-	resolveBootstrapAction: ReturnType<typeof useBootstrapWorkflow>['resolveBootstrapAction']
+	bootstrapWorkflow: ReturnType<typeof useBootstrapWorkflow>
+	dashboardActions: ReturnType<typeof useDashboardActions>
 }
 
 export default function BootstrapDiscoverySection(props: BootstrapDiscoverySectionProps) {
@@ -20,6 +22,7 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 	const [backfilledCollapsed, setBackfilledCollapsed] = createSignal(false)
 	const [collapsed, setCollapsed] = createSignal(false)
 	const previewLimit = 5
+	const currentDiscoveryPage = () => props.bootstrap()?.currentPage ?? props.bootstrapWorkflow.bootstrapCursor()?.page ?? 1
 	const shownCount = (total: number, expanded: boolean) => (expanded ? total : Math.min(total, previewLimit))
 	const qbStatusCounts = () => {
 		const entries = [
@@ -44,20 +47,30 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 
 	return (
 		<div class="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
-			<div class="flex items-center justify-between mb-2">
+			<div class={`flex items-center justify-between ${props.bootstrap() ? 'mb-2' : 'mb-0'}`}>
 				<h2 class="text-base font-semibold text-white">
 					Scraping status
 					<Show when={props.bootstrap()?.actionItem}>
 						<span class="ml-2 text-xs font-normal text-amber-300">(Item pending)</span>
 					</Show>
 				</h2>
-				<button
-					type="button"
-					class="rounded-full border border-slate-300/30 bg-slate-300/10 px-2 py-0.5 text-xs text-slate-100 ml-2"
-					onClick={() => setCollapsed((c) => !c)}
+				<Show
+					when={props.bootstrap()}
+					fallback={(
+						<div class="ml-2 flex flex-wrap items-center gap-2">
+							<ActionButton label="Rescan watchlist" onClick={props.dashboardActions.rescanWatchlist} compact />
+							<ActionButton label="Start scraping" onClick={props.bootstrapWorkflow.runBootstrapDiscoveryStep} compact />
+						</div>
+					)}
 				>
-					{collapsed() ? 'Expand' : 'Collapse'}
-				</button>
+					<button
+						type="button"
+						class="rounded-full border border-slate-300/30 bg-slate-300/10 px-2 py-0.5 text-xs text-slate-100 ml-2"
+						onClick={() => setCollapsed((c) => !c)}
+					>
+						{collapsed() ? 'Expand' : 'Collapse'}
+					</button>
+				</Show>
 			</div>
 			<Show when={collapsed()}>
 				<Show when={props.bootstrap()}>
@@ -68,21 +81,55 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 				<Show when={props.bootstrap()}>
 					{(bootstrap) => (
 						<div class="space-y-3">
-							<p>Bootstrap discovery: {bootstrap().found ? 'checkpoint found' : 'not found yet'}</p>
-							<p>Mode: {bootstrap().mode ?? 'n/a'}</p>
-							<p>{bootstrap().reason}</p>
-							<p>Pages scanned: {bootstrap().pagesScanned} · inspected torrents: {bootstrap().inspectedCount}</p>
-							<p>Matched torrent: {bootstrap().title ?? 'n/a'}</p>
-							<p>Next cursor: {typeof bootstrap().nextPage === 'number' ? `page ${bootstrap().nextPage} item ${bootstrap().nextItemIndex ?? 0}` : 'none'}</p>
+							<div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+								<div class="space-y-1">
+									<p>Bootstrap discovery: {bootstrap().found ? 'checkpoint found' : 'not found yet'}</p>
+									<p>Mode: {bootstrap().mode ?? 'n/a'}</p>
+									<p>{bootstrap().reason}</p>
+									<p>Pages scanned: {bootstrap().pagesScanned} · inspected torrents: {bootstrap().inspectedCount}</p>
+									<Show when={bootstrap().nyaaResultsText}>
+										<p>{bootstrap().nyaaResultsText}</p>
+									</Show>
+									<p>Matched torrent: {bootstrap().title ?? 'n/a'}</p>
+									<Show when={bootstrap().hasNextPage !== false}>
+										<p>Next cursor: {typeof bootstrap().nextPage === 'number' ? `page ${bootstrap().nextPage} item ${bootstrap().nextItemIndex ?? 0}` : 'none'}</p>
+									</Show>
+								</div>
+								<div class="flex w-full flex-col gap-2 lg:w-auto lg:min-w-60">
+									<ActionButton label="Rescan watchlist" onClick={props.dashboardActions.rescanWatchlist} compact />
+									<div class="flex w-full items-center gap-2">
+										<ActionButton
+											label="Prev page"
+											onClick={() => props.bootstrapWorkflow.runBootstrapDiscoveryForPage(currentDiscoveryPage() - 1)}
+											disabled={currentDiscoveryPage() <= 1}
+											compact
+											class="flex-1"
+										/>
+										<ActionButton label="Next page" onClick={props.bootstrapWorkflow.runBootstrapDiscoveryStep} disabled={bootstrap().hasNextPage === false} compact class="flex-1" />
+									</div>
+									<Show when={props.bootstrapWorkflow.bootstrapCursor()}>
+										<ActionButton label="Reset scraping status" onClick={props.bootstrapWorkflow.clearBootstrapDiscoveryStatus} compact />
+									</Show>
+									<label class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-200">
+										<input
+											type="checkbox"
+											checked={props.bootstrapWorkflow.qbForceResubmit()}
+											onChange={(event) => props.bootstrapWorkflow.setQbForceResubmit(event.currentTarget.checked)}
+											class="h-3.5 w-3.5 accent-amber-300"
+										/>
+										<span>force resubmit to qBittorrent</span>
+									</label>
+								</div>
+							</div>
 							<Show when={bootstrap().actionItem}>
 								{(actionItem) => (
 									<div class="rounded-xl border border-white/10 bg-white/5 p-3">
 										<p class="font-medium text-white">Needs review: {actionItem().item.title}</p>
 										<p class="mt-1 text-xs text-slate-400">{actionItem().reason}</p>
 										<div class="mt-3 flex flex-wrap gap-2">
-											<ActionButton label="Approve" onClick={() => props.resolveBootstrapAction('approve')} compact />
-											<ActionButton label="Blacklist" onClick={() => props.resolveBootstrapAction('blacklist')} compact />
-											<ActionButton label="Skip" onClick={() => props.resolveBootstrapAction('skip')} compact />
+											<ActionButton label="Approve" onClick={() => props.bootstrapWorkflow.resolveBootstrapAction('approve')} compact />
+											<ActionButton label="Blacklist" onClick={() => props.bootstrapWorkflow.resolveBootstrapAction('blacklist')} compact />
+											<ActionButton label="Skip" onClick={() => props.bootstrapWorkflow.resolveBootstrapAction('skip')} compact />
 										</div>
 									</div>
 								)}

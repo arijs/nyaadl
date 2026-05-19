@@ -1,15 +1,10 @@
 import { Show } from 'solid-js'
 import type { Accessor } from 'solid-js'
 import type { StatusResponse } from '../../../shared/api'
-import type { useBootstrapWorkflow } from '../../hooks/useBootstrapWorkflow'
-import type { useDashboardActions } from '../../hooks/useDashboardActions'
-import ActionButton from '../ui/ActionButton'
 import Metric from '../ui/Metric'
 
 interface HeroSectionProps {
 	status: Accessor<StatusResponse | undefined>
-	bootstrapWorkflow: ReturnType<typeof useBootstrapWorkflow>
-	dashboardActions: ReturnType<typeof useDashboardActions>
 }
 
 export default function HeroSection(props: HeroSectionProps) {
@@ -33,28 +28,6 @@ export default function HeroSection(props: HeroSectionProps) {
 						<Metric label="Blocked" value={() => props.status()?.data.status.blockedCount ?? '...'} />
 						<Metric label="Pending" value={() => props.status()?.data.status.pendingCount ?? '...'} />
 					</div>
-					<div class="flex flex-wrap gap-3">
-						<ActionButton label="Rescan watchlist" onClick={props.dashboardActions.rescanWatchlist} />
-						<div style="display: none;">
-							<ActionButton label="Scrape page 1" onClick={props.dashboardActions.scrapePageOne} />
-						</div>
-						<ActionButton label={props.bootstrapWorkflow.bootstrapCursor() ? 'Continue scraping' : 'Start scraping'} onClick={props.bootstrapWorkflow.runBootstrapDiscoveryStep} />
-						<Show when={props.bootstrapWorkflow.bootstrapCursor()}>
-							<ActionButton label="Reset scraping status" onClick={props.bootstrapWorkflow.clearBootstrapDiscoveryStatus} />
-						</Show>
-						<div style="display: none;">
-							<ActionButton label="Bootstrap next page" onClick={props.dashboardActions.bootstrapNextPage} />
-						</div>
-					</div>
-					<label class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-200">
-						<input
-							type="checkbox"
-							checked={props.bootstrapWorkflow.qbForceResubmit()}
-							onChange={(event) => props.bootstrapWorkflow.setQbForceResubmit(event.currentTarget.checked)}
-							class="h-3.5 w-3.5 accent-amber-300"
-						/>
-						<span>force resubmit to qBittorrent</span>
-					</label>
 				</div>
 			</div>
 		</section>

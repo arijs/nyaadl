@@ -26,6 +26,7 @@ export function useDashboardScreen() {
 		status,
 		refetch,
 		appendLogEntry: bootstrapLog.appendEntry,
+		onBlacklistChanged: blacklistManager.refetch,
 	})
 
 	return {

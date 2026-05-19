@@ -145,6 +145,10 @@ export interface BootstrapDiscoveryResult {
 	inspectedCount: number
 	found: boolean
 	reason: string
+	nyaaResultsText?: string
+	nyaaResultsLast?: number
+	nyaaResultsTotal?: number
+	hasNextPage?: boolean
 	mode?: 'needs_review' | 'page_completed' | 'found_already_downloaded' | 'no_items'
 	currentPage?: number
 	currentItemIndex?: number

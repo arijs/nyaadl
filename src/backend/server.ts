@@ -350,6 +350,30 @@ function buildBootstrapSummary(
 	}
 }
 
+function parseNyaaResultsStats(html: string): { text?: string; last?: number; total?: number; hasNextPage?: boolean } {
+	const match = /Displaying results\s+(\d[\d,]*)\s*-\s*(\d[\d,]*)\s+out of\s+(\d[\d,]*)\s+results\./i.exec(html)
+	if (!match) {
+		return {}
+	}
+
+	const parseNumber = (value: string) => Number.parseInt(value.replace(/,/g, ''), 10)
+	const first = parseNumber(match[1] ?? '')
+	const last = parseNumber(match[2] ?? '')
+	const total = parseNumber(match[3] ?? '')
+	const text = `Displaying results ${first}-${last} out of ${total} results.`
+
+	if (!Number.isFinite(last) || !Number.isFinite(total)) {
+		return { text }
+	}
+
+	return {
+		text,
+		last,
+		total,
+		hasNextPage: last < total,
+	}
+}
+
 function sanitizeInternalNames(names: string[] | undefined): string[] {
 	if (!names) {
 		return []
@@ -425,6 +449,7 @@ async function discoverLastDownloadedCheckpointStep(input?: BootstrapDiscoverSte
 
 	const { html, items } = await scrapeNyaaPage(page)
 	await savePageSnapshot(page, html, items)
+	const nyaaResultsStats = parseNyaaResultsStats(html)
 	const pageCursorToken = `${page}:${items.length}:${items[0]?.torrentId ?? 'none'}:${items[items.length - 1]?.torrentId ?? 'none'}`
 
 	if (startItemIndex > 0 && input?.cursorToken && input.cursorToken !== pageCursorToken) {
@@ -438,6 +463,10 @@ async function discoverLastDownloadedCheckpointStep(input?: BootstrapDiscoverSte
 			pagesScanned,
 			inspectedCount,
 			found: false,
+			nyaaResultsText: nyaaResultsStats.text,
+			nyaaResultsLast: nyaaResultsStats.last,
+			nyaaResultsTotal: nyaaResultsStats.total,
+			hasNextPage: nyaaResultsStats.hasNextPage,
 			mode: 'page_completed',
 			currentPage: page,
 			currentItemIndex: startItemIndex,
@@ -761,6 +790,10 @@ async function discoverLastDownloadedCheckpointStep(input?: BootstrapDiscoverSte
 				pagesScanned,
 				inspectedCount,
 				found: false,
+				nyaaResultsText: nyaaResultsStats.text,
+				nyaaResultsLast: nyaaResultsStats.last,
+				nyaaResultsTotal: nyaaResultsStats.total,
+				hasNextPage: nyaaResultsStats.hasNextPage,
 				mode: 'needs_review',
 				currentPage: page,
 				currentItemIndex: itemIndex,
@@ -828,6 +861,10 @@ async function discoverLastDownloadedCheckpointStep(input?: BootstrapDiscoverSte
 		pagesScanned,
 		inspectedCount,
 		found: false,
+		nyaaResultsText: nyaaResultsStats.text,
+		nyaaResultsLast: nyaaResultsStats.last,
+		nyaaResultsTotal: nyaaResultsStats.total,
+		hasNextPage: nyaaResultsStats.hasNextPage,
 		mode: 'page_completed',
 		currentPage: page,
 		currentItemIndex: items.length,
@@ -1158,7 +1195,11 @@ async function main(): Promise<void> {
 	app.get('/api/watchlist', () => ({ success: true, data: watchTargetsState }))
 	app.get('/api/pending', () => ({ success: true, data: pendingState }))
 	app.get('/api/torrents', () => ({ success: true, data: buildTorrentHistory() }))
-	app.get('/api/blacklist', () => ({ success: true, data: blacklistState.map(parseBlacklistEntry) }))
+	app.get('/api/blacklist', async () => {
+		const persistedItems = await loadBlacklist()
+		blacklistState.splice(0, blacklistState.length, ...persistedItems)
+		return { success: true, data: blacklistState.map(parseBlacklistEntry) }
+	})
 
 	app.delete('/api/blacklist', async (event) => {
 		const body = await readBody<{ key?: string }>(event).catch(() => undefined)
