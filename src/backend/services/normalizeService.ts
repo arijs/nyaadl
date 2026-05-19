@@ -1,7 +1,7 @@
 const reWhitespace = /\s+/g
 const reReleasePrefix = /^\[Erai-raws\]\s*/i
-const reEpisodeSuffix = /\s+-\s*\d{1,4}(?:\s*\([^\]]+\))?$/i
-const reEpisodeBeforeMetadata = /\s+-\s*\d{1,4}(?=\s*\[)/i
+const reEpisodeSuffix = /\s*-\s*\d{1,4}(?:\s*\([^)]*\))?$/i
+const reEpisodeBeforeMetadata = /\s*-\s*\d{1,4}(?:\s*\([^)]*\))?(?=\s*\[)/i
 const reTrailingHash = /\s*\[[A-F0-9]{8}\]$/i
 const reTrailingMetadataBlocks = /(?:\s*\[[^\]]+\])+$/i
 const reHyphenSpacing = /([a-z0-9])\s*-\s*([a-z0-9])/gi
@@ -43,6 +43,27 @@ export function buildCanonicalSeriesKey(seriesName: string, aliases: Record<stri
 
 export function buildNormalizedKey(seriesKey: string, resolution: string): string {
 	return `${seriesKey}::${resolution.toLowerCase()}`
+}
+
+export function normalizeBlacklistKey(value: string): string {
+	const trimmed = value.trim().toLowerCase()
+	if (!trimmed) {
+		return ''
+	}
+
+	const separatorIndex = trimmed.lastIndexOf('::')
+	if (separatorIndex < 0) {
+		return deriveSeriesBase(trimmed)
+	}
+
+	const seriesPart = trimmed.slice(0, separatorIndex)
+	const resolutionPart = trimmed.slice(separatorIndex + 2)
+	const normalizedSeries = deriveSeriesBase(seriesPart)
+	const normalizedResolution = resolutionPart.trim().toLowerCase() || 'unknown'
+	if (!normalizedSeries) {
+		return ''
+	}
+	return buildNormalizedKey(normalizedSeries, normalizedResolution)
 }
 
 export function sanitizePathSegment(value: string): string {

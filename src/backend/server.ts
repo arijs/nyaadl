@@ -9,12 +9,15 @@ import { addWatchRoot, inspectWatchRoots, loadAliases, loadWatchRoots, removeWat
 import { downloadTorrentFile, findDownloadedTorrentFileById } from './services/downloaderService'
 import { addTorrentToQbittorrent, getQbittorrentRuntimeConfig, QbittorrentRequestError, updateQbittorrentRuntimeConfig } from './services/qbittorrentService'
 import { buildDailyReport } from './services/reportService'
-import { inspectAndClassifyTorrent, savePageSnapshot, scrapeNyaaPage } from './services/nyaaScraperService'
+// If nyaaScraperServiceStream fails, you can use the cheerio version below
+// import { scrapeNyaaPage } from './services/nyaaScraperService'
+import { scrapeNyaaPage } from './services/nyaaScraperServiceStream'
+import { inspectAndClassifyTorrent, savePageSnapshot } from './services/nyaaTorrentService'
 import { parseTorrentMetainfo } from './services/torrentMetainfoService'
 import { initStateFiles, loadBlacklist, loadBootstrapDiscovery, loadDecisions, loadLastProcessed, loadPending, loadQbittorrentAddResponses, loadQbittorrentFailures, loadQbittorrentSubmitted, saveBlacklist, saveBootstrapDiscovery, saveDecisions, saveLastProcessed, savePending, saveQbittorrentAddResponses, saveQbittorrentFailures, saveQbittorrentSubmitted } from './services/stateService'
 import { findExistingLocalMatchByTitle, type ExistingLocalMatch } from './services/localLibraryService'
 import { buildTorrentMatchResult, matchTorrentToWatchTargets } from './services/matchingService'
-import { buildNormalizedKey } from './services/normalizeService'
+import { buildNormalizedKey, deriveSeriesBase } from './services/normalizeService'
 import { listDecisionTorrentIds, listPendingTorrentIds } from './services/stateService'
 import type { AppStatus, BootstrapAutoDecisionSummary, BootstrapDiscoveryResult, DecisionRecord, DecisionStatus, LastProcessed, PendingItem, QbittorrentAddApiResponseItem, QbittorrentFailureItem, TorrentHistoryItem, TorrentItem, WatchRootStatus, WatchTarget } from '@shared/types'
 
@@ -312,6 +315,7 @@ function buildBootstrapSummary(
 	qbResponseText?: string,
 	fileMissing?: boolean,
 	newlyFound?: boolean,
+	resubmittedFromNyaa?: boolean,
 ): BootstrapAutoDecisionSummary {
 	return {
 		torrentId: item.torrentId,
@@ -320,6 +324,7 @@ function buildBootstrapSummary(
 		reason,
 		fileMissing,
 		newlyFound,
+		resubmittedFromNyaa,
 		qbResponseText,
 		page: item.page,
 		itemIndex,
@@ -458,13 +463,72 @@ async function discoverLastDownloadedCheckpointStep(input?: BootstrapDiscoverSte
 				}
 
 				if (latestDecision.status === 'already_downloaded') {
-					alreadyDownloaded.push(buildBootstrapSummary(
+					let usedMetainfoFallback = false
+					let usedFilenameFallback = false
+					let usedNyaaDownloadFallback = false
+					const existingTorrent = await findDownloadedTorrentFileById(item.torrentId)
+					const torrentToSubmit = existingTorrent ?? await downloadTorrentFile(latestDecision.item)
+					if (!existingTorrent) {
+						usedNyaaDownloadFallback = true
+					}
+					let decisionInternalNames = getDecisionInternalNames(latestDecision)
+					if (decisionInternalNames.length === 0) {
+						const metainfo = await readFile(torrentToSubmit.filePath)
+							.then((buffer) => parseTorrentMetainfo(buffer))
+							.catch(() => undefined)
+						if (metainfo) {
+							decisionInternalNames = sanitizeInternalNames(metainfo.videoNames.length > 0 ? metainfo.videoNames : [metainfo.name])
+							if (decisionInternalNames.length > 0) {
+								usedMetainfoFallback = true
+							}
+						}
+					}
+					if (decisionInternalNames.length === 0) {
+						const filenameCandidate = torrentToSubmit.filename
+							.replace(new RegExp(`-${item.torrentId}\\.torrent$`, 'i'), '')
+							.replace(/\.torrent$/i, '')
+							.trim()
+						decisionInternalNames = sanitizeInternalNames([filenameCandidate])
+						if (decisionInternalNames.length > 0) {
+							usedFilenameFallback = true
+						}
+					}
+					const target = resolveTorrentTarget(latestDecision.item, decisionInternalNames, aliases)
+					const resubmitReason = `${latestDecision.reason} (replayed from history; local file missing -> resubmitted)`
+					const submitResult = await submitDownloadedTorrent({
+						item: latestDecision.item,
+						torrentFilePath: torrentToSubmit.filePath,
+						torrentFilename: torrentToSubmit.filename,
+						targetFolderPath: target.folderPath,
+						decisionStatus: 'approved',
+						decisionReason: resubmitReason,
+						source: 'bootstrap',
+						seriesKey: (latestDecision as DecisionRecord & { seriesKey?: string }).seriesKey,
+						internalNames: decisionInternalNames,
+						forceResubmit: qbForceResubmit,
+					})
+					const backfillSources: string[] = []
+					if (usedNyaaDownloadFallback) {
+						backfillSources.push('fresh Nyaa torrent download')
+					}
+					if (usedMetainfoFallback) {
+						backfillSources.push('local torrent metainfo')
+					}
+					if (usedFilenameFallback) {
+						backfillSources.push('saved torrent filename')
+					}
+					const backfillReason = backfillSources.length > 0
+						? `${resubmitReason} (backfill using ${backfillSources.join(' + ')})`
+						: resubmitReason
+					backfilled.push(buildBootstrapSummary(
 						latestDecision.item,
 						latestDecision.status,
-						`${latestDecision.reason} (replayed from history; local file not found)`,
+						backfillReason,
 						itemIndex,
-						undefined,
+						submitResult.responseText ?? lookupLatestQbResponseText(latestDecision.item.torrentId),
 						true,
+						undefined,
+						usedNyaaDownloadFallback,
 					))
 					inspectedCount += 1
 					continue
@@ -1108,7 +1172,7 @@ async function main(): Promise<void> {
 			throw notFound('Pending item not found')
 		}
 		const pendingItem = pendingState[pendingIndex]!
-		const seriesKey = pendingItem.seriesKey ?? pendingItem.item.seriesBaseRaw.toLowerCase()
+		const seriesKey = deriveSeriesBase(pendingItem.seriesKey ?? pendingItem.item.seriesBaseRaw)
 		const blacklistKey = buildNormalizedKey(seriesKey, pendingItem.item.resolution)
 		if (!blacklistState.includes(blacklistKey)) {
 			blacklistState.push(blacklistKey)

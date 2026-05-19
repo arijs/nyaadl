@@ -27,6 +27,7 @@ import {
 	readJsonFile,
 	writeJsonFileAtomic,
 } from '../storage/jsonStore'
+import { normalizeBlacklistKey } from './normalizeService'
 
 const foldersConfigPath = path.join(dataRoot, 'folders-config.json')
 const blacklistPath = path.join(dataRoot, 'blacklist.json')
@@ -89,11 +90,13 @@ export async function initStateFiles(): Promise<void> {
 
 export async function loadBlacklist(): Promise<string[]> {
 	const file = await readJsonFile<BlacklistFile>(blacklistPath, { items: [] }, isBlacklistFile)
-	return Array.from(new Set(file.items.map((item) => item.trim().toLowerCase()).filter(Boolean)))
+	return Array.from(new Set(file.items.map((item) => normalizeBlacklistKey(item)).filter(Boolean)))
 }
 
 export async function saveBlacklist(items: string[]): Promise<void> {
-	await writeJsonFileAtomic<BlacklistFile>(blacklistPath, { items: Array.from(new Set(items.map((item) => item.trim().toLowerCase()).filter(Boolean))) })
+	const normalizedItems = Array.from(new Set(items.map((item) => normalizeBlacklistKey(item)).filter(Boolean)))
+	normalizedItems.sort((a, b) => a.localeCompare(b))
+	await writeJsonFileAtomic<BlacklistFile>(blacklistPath, { items: normalizedItems })
 }
 
 export async function loadPending(): Promise<PendingItem[]> {

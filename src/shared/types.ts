@@ -163,6 +163,7 @@ export interface BootstrapAutoDecisionSummary {
 	reason: string
 	fileMissing?: boolean
 	newlyFound?: boolean
+	resubmittedFromNyaa?: boolean
 	qbResponseText?: string
 	page: number
 	itemIndex: number

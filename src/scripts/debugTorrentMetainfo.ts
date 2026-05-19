@@ -1,4 +1,4 @@
-import { fetchTorrentBuffer } from '../backend/services/nyaaScraperService'
+import { fetchTorrentBuffer } from '../backend/services/nyaaTorrentService'
 import { buildMatchCandidates } from '../backend/services/normalizeService'
 import { parseTorrentMetainfo } from '../backend/services/torrentMetainfoService'
 

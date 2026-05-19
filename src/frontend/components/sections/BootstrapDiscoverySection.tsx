@@ -110,7 +110,16 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 										<For each={showAllBackfilled() ? (bootstrap().backfilled ?? []) : (bootstrap().backfilled?.slice(0, previewLimit) ?? [])}>
 											{(entry) => (
 												<div class="mt-1 rounded-lg border border-slate-300/15 bg-slate-900/20 px-2 py-1">
-													<p class="text-xs text-slate-100">p{entry.page} #{entry.itemIndex}: {entry.title}<Show when={entry.qbResponseText}> / qB: {entry.qbResponseText}</Show></p>
+													<p class="text-xs text-slate-100">
+														p{entry.page} #{entry.itemIndex}: {entry.title}
+														<Show when={entry.resubmittedFromNyaa}>
+															<span class="ml-2 font-bold text-emerald-300">Resubmitted from Nyaa</span>
+														</Show>
+														<Show when={entry.fileMissing}>
+															<span class="ml-2 font-bold text-rose-300">File missing</span>
+														</Show>
+														<Show when={entry.qbResponseText}> / qB: {entry.qbResponseText}</Show>
+													</p>
 													<Show when={entry.reason}><p class="mt-0.5 text-[11px] text-slate-200/85">{entry.reason}</p></Show>
 												</div>
 											)}
