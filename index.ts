@@ -7,9 +7,13 @@
 //   count += Number(line);
 //   console.write(`Count: ${count}\n> `);
 // }
-import { mkdir } from "node:fs/promises"
-import { getParser, TreeMatcher, treeWalk } from '@arijs/stream-xml-parser'
-import { inspectObj } from '@arijs/frontend/isomorphic/utils/inspect'
+// import { mkdir } from "node:fs/promises"
+import { getParser, TreeMatcher, treeWalk, Printer } from '@arijs/stream-xml-parser'
+
+function inspectObj(value: unknown, depth = 2, max = 32) {
+	const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
+	return text.length > max ? `${text.slice(0, max)}…` : text
+}
 
 const reTorrent = /\/download\/\d+\.torrent$/
 const reView = /\/view\/\d+$/
@@ -17,6 +21,9 @@ const sanitizeFilename = (name: string) => name.replace(/[\/\\?%*:|"<>]/g, '-').
 
 let page: number | null = null
 let pendingRows: any[] = []
+let savePromises: Promise<void>[] = []
+let saveJsonPromises: Promise<void>[] = []
+const reRead = /^read\s+(\d+)$/
 
 console.log(`Enter page number to fetch (or 'exit' to quit): `)
 
@@ -24,6 +31,22 @@ for await (const line of console) {
 	const trimmed = line.trim()
 	if (trimmed.toLowerCase() === 'exit' || trimmed.toLowerCase() === 'quit') {
 		break
+	}
+	if (trimmed.toLowerCase() === 'skip') {
+		page = null
+		pendingRows = []
+	} else {
+		const readMatch = reRead.exec(trimmed)
+		if (readMatch) {
+			const pageNum = Number(readMatch[1])
+			if (isNaN(pageNum) || pageNum < 1 || !Number.isFinite(pageNum)) {
+				console.log(`Please enter a valid page number to read (1 or higher): `)
+			} else {
+				const { page: rPage, foundRows, rowsFound, rowsNoPath, nodeCount } = await loadLocalPage(pageNum)
+				console.log(`Page ${rPage} readed. Rows found: ${rowsFound}, Rows no path match: ${rowsNoPath}, Node count: ${nodeCount}`)
+				console.log(foundRows.map(({ title, url }) => ({ title, url })))
+			}
+		}
 	}
 	if (pendingRows.length > 0) {
 		const lastRow = pendingRows.pop()
@@ -35,13 +58,15 @@ for await (const line of console) {
 	}
 	if (null === page) {
 		page = +trimmed
-		if (isNaN(page) || page < 1) {
+		if (isNaN(page) || page < 1 || !Number.isFinite(page)) {
 			page = null
 			console.log(`Please enter a valid page number (1 or higher): `)
 		}
 	}
 	if (null !== page) {
-		const { page: rPage, foundRows, rowsFound, rowsNoPath, nodeCount } = await getPage()
+		const { page: rPage, foundRows, rowsFound, rowsNoPath, nodeCount, savePromises: pageSavePromises, saveJsonPromises: pageSaveJsonPromises } = await getRemotePage()
+		savePromises.push(...pageSavePromises)
+		saveJsonPromises.push(...pageSaveJsonPromises)
 		console.log(`Page ${rPage} processed. Rows found: ${rowsFound}, Rows no path match: ${rowsNoPath}, Node count: ${nodeCount}`)
 		console.log(foundRows.map(({ title, url }) => ({ title, url })))
 		pendingRows = foundRows
@@ -49,6 +74,25 @@ for await (const line of console) {
 		continue
 	}
 }
+
+Promise.all([
+	Promise.all(savePromises).then(() => {
+		const count = savePromises.length
+		if (count > 0) {
+			console.log(`${count} pages saved.`)
+		}
+	}).catch((err) => {
+		console.error(`Error saving pages:`, err)
+	}),
+	Promise.all(saveJsonPromises).then(() => {
+		const count = saveJsonPromises.length
+		if (count > 0) {
+			console.log(`${count} JSON files saved.`)
+		}
+	}).catch((err) => {
+		console.error(`Error saving JSON files:`, err)
+	}),
+])
 
 function askNextRow() {
 	const lastRow = pendingRows.at(-1)
@@ -58,6 +102,10 @@ function askNextRow() {
 		page = null
 		console.log(`Enter another page number to fetch (or 'exit' to quit): `)
 	}
+}
+
+function getDateAsIsoString(date?: Date | null | undefined) {
+	return (date ?? new Date()).toISOString().slice(0, 10)
 }
 
 function getUrl(path: string) {
@@ -71,12 +119,16 @@ function getPageUrl() {
 	return getUrl(`/?f=0&c=1_2&q=Erai-raws+-HEVC&p=${page}`)
 }
 
-async function getPage() {
-	const foundRows: any[] = []
-	let rowsFound = 0
-	let rowsNoPath = 0
-	let nodeCount = 0
-	let lastTableRow: any = null
+function savePage(tableNode: any, elAdapter: any) {
+	if (null === page) {
+		throw new Error('Page number is not set')
+	}
+	return Bun.write(`torrents/page-${getDateAsIsoString()}-${page}.html`, new Blob([
+		new Printer({ elAdapter, noFormat: true }).printTag(tableNode, 0, [])
+	]))
+}
+
+async function getRemotePage() {
 	const parser = getParser()
 	const resp = await fetch(getPageUrl())
 	if (!resp.ok) {
@@ -87,10 +139,31 @@ async function getPage() {
 		parser.write(chunk)
 	}
 	parser.end()
-	const {tree, elAdapter} = parser.getResult({ asNode: true })
+	const result = parser.getResult({ asNode: true })
+	return parsePage({ ...result, page })
+}
+
+async function loadLocalPage(pageNum: number) {
+	const parser = getParser()
+	const data = await Bun.file(`torrents/page-${getDateAsIsoString()}-${pageNum}.html`).text()
+	parser.end(data)
+	const result = parser.getResult({ asNode: true })
+	return parsePage({ ...result, page: pageNum, fromLocal: true })
+}
+	
+function parsePage({ tree, elAdapter, page, fromLocal }: { tree: any; elAdapter: any, page: number, fromLocal: boolean }) {
+	const foundRows: any[] = []
+	let rowsFound = 0
+	let rowsNoPath = 0
+	let nodeCount = 0
+	let lastTable: any = null
+	let lastTableRow: any = null
+	const tmTable = new TreeMatcher(elAdapter)
+	tmTable.name('table')
+	tmTable.attr(['class', /\btorrent-list\b/])
 	const tmTableRow = new TreeMatcher(elAdapter)
 	tmTableRow.name('tr')
-	tmTableRow.path(['* <*>', ['table', [['class', /\btorrent-list\b/]]], 'tbody'])
+	tmTableRow.path(['* <*>', tmTable, 'tbody'])
 	const tmTorrent = new TreeMatcher(elAdapter)
 	tmTorrent.name('a')
 	tmTorrent.attr(['href', reTorrent])
@@ -103,17 +176,28 @@ async function getPage() {
 	// console.log(`tree result:`, tree)
 	// const checkIfHasTorrentAndView = () => {
 	// }
+	const savePromises: Promise<void>[] = []
+	const saveJsonPromises: Promise<void>[] = []
 	treeWalk(tree, elAdapter, {
-		onNode(node: any, path: any) {
+		onNode({node, path}: any) {
 			// console.log(`Visiting node:`, inspectObj({node, path}, 2, 32))
 			nodeCount++
-			if (lastTableRow) {
+			if (!lastTable) {
+				const tableRes = tmTable.testAll(node, path)
+				if (tableRes.success) {
+					lastTable = node
+					if (!fromLocal) {
+						savePromises.push(savePage(node, elAdapter).then(() => {}))
+					}
+					console.log(`Table found:`, inspectObj(node.node.name, 2, 32))
+				}
+			} else if (lastTableRow) {
 				if (path.includes(lastTableRow.node)) {
 					const torrentRes = tmTorrent.testAll(node, path)
 					if (torrentRes.success) {
 						lastTableRow.nodeTorrent = node
-						console.log(`  Torrent found:`, inspectObj(node.name, 2, 64))
-						elAdapter.attrsEach(node, (name: string, value: string) => {
+						console.log(`  Torrent found:`, inspectObj(node.node.name, 2, 64))
+						elAdapter.attrsEach(node.node, (name: string, value: string) => {
 							if (name === 'href') {
 								lastTableRow.url = value
 							}
@@ -124,10 +208,10 @@ async function getPage() {
 					if (viewRes.success) {
 						lastTableRow.nodeView = node
 						lastTableRow.title = ''
-						console.log(`  View found:`, inspectObj(node.name, 2, 64))
-						treeWalk(node, elAdapter, {
-							onText(tnode: any) {
-								lastTableRow.title += elAdapter.textValueGet(tnode)
+						console.log(`  View found:`, inspectObj(node.node.name, 2, 64))
+						treeWalk(node.node, elAdapter, {
+							onText({node}: any) {
+								lastTableRow.title += elAdapter.textValueGet(node.node)
 							},
 						})
 					}
@@ -159,7 +243,11 @@ async function getPage() {
 			}
 		},
 	})
-	return { page, foundRows, rowsFound, rowsNoPath, nodeCount }
+	saveJsonPromises.push(Bun.write(
+		`torrents/page-${getDateAsIsoString()}-${page}.json`,
+		JSON.stringify(foundRows.map(({ title, url }) => ({ title, url })), null, '\t')
+	).then(() => {}))
+	return { page, foundRows, rowsFound, rowsNoPath, nodeCount, savePromises, saveJsonPromises }
 }
 
 async function getTorrent({ url, title }: { url: string; title: string }) {

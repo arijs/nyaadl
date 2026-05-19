@@ -1,12 +1,20 @@
 {
   "compilerOptions": {
-    // Environment setup & latest features
-    "lib": ["ESNext", "DOM", "DOM.AsyncIterable"],
-    "target": "ESNext",
-    "module": "Preserve",
+    "lib": ["ESNext", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
+    "target": "ES2022",
+    "module": "ESNext",
     "moduleDetection": "force",
-    "jsx": "react-jsx",
-    "allowJs": true,
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "allowJs": false,
+    "ignoreDeprecations": "6.0",
+    "types": ["node", "bun"],
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["src/shared/*"],
+      "@backend/*": ["src/backend/*"],
+      "@frontend/*": ["src/frontend/*"]
+    },
 
     // Bundler mode
     "moduleResolution": "bundler",
@@ -20,10 +28,13 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
+    "noUncheckedSideEffectImports": true,
 
     // Some stricter flags (disabled by default)
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
-  }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"],
+  "exclude": ["index.ts"]
 }
