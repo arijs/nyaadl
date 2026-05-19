@@ -1,5 +1,8 @@
 # nyaadl
 
+[![NYAADL dashboard screenshot 1](docs/img/localhost_5173_1.png)](docs/img/localhost_5173_full.png)
+[![NYAADL dashboard screenshot 2](docs/img/localhost_5173_2.png)](docs/img/localhost_5173_full.png)
+
 NYAADL is a Node.js + TypeScript automation app for Nyaa scraping, torrent classification, manual approval, and qBittorrent Web API submission.
 
 ## What It Does
