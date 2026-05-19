@@ -1,39 +1,50 @@
 import { H3, readBody } from 'h3'
 import { toNodeHandler } from 'h3/node'
-import path from 'node:path'
 import { readFile } from 'node:fs/promises'
-import { ensureDirectory, dataRoot } from './storage/jsonStore'
 import { advanceCheckpoint, determineScrapePages } from './services/checkpointService'
+import { discoverLastDownloadedCheckpointStep } from './services/bootstrapDiscoveryService'
 import { badRequest, notFound } from './services/apiErrorService'
-import { addWatchRoot, inspectWatchRoots, loadAliases, loadWatchRoots, removeWatchRoot, scanWatchTargets, upsertAliases, validateWatchRootPath } from './services/watchlistService'
-import { downloadTorrentFile, findDownloadedTorrentFileById } from './services/downloaderService'
-import { addTorrentToQbittorrent, getQbittorrentRuntimeConfig, QbittorrentRequestError, updateQbittorrentRuntimeConfig } from './services/qbittorrentService'
+import { addWatchRoot, loadAliases, removeWatchRoot, validateWatchRootPath } from './services/watchlistService'
+import { downloadTorrentFile } from './services/downloaderService'
+import { getQbittorrentRuntimeConfig, updateQbittorrentRuntimeConfig } from './services/qbittorrentService'
 import { buildDailyReport } from './services/reportService'
 // If nyaaScraperServiceStream fails, you can use the cheerio version below
 // import { scrapeNyaaPage } from './services/nyaaScraperService'
 import { scrapeNyaaPage } from './services/nyaaScraperServiceStream'
 import { inspectAndClassifyTorrent, savePageSnapshot } from './services/nyaaTorrentService'
 import { parseTorrentMetainfo } from './services/torrentMetainfoService'
-import { initStateFiles, loadBlacklist, loadBootstrapDiscovery, loadDecisions, loadLastProcessed, loadPending, loadQbittorrentAddResponses, loadQbittorrentFailures, loadQbittorrentSubmitted, saveBlacklist, saveBootstrapDiscovery, saveDecisions, saveLastProcessed, savePending, saveQbittorrentAddResponses, saveQbittorrentFailures, saveQbittorrentSubmitted } from './services/stateService'
-import { findExistingLocalMatchByTitle, type ExistingLocalMatch } from './services/localLibraryService'
-import { buildTorrentMatchResult, matchTorrentToWatchTargets } from './services/matchingService'
+import { loadBlacklist, saveBlacklist, saveBootstrapDiscovery, saveDecisions, saveLastProcessed, savePending, saveQbittorrentSubmitted } from './services/stateService'
 import { buildNormalizedKey, deriveSeriesBase } from './services/normalizeService'
 import { listDecisionTorrentIds, listPendingTorrentIds } from './services/stateService'
-import type { AppStatus, BlacklistEntry, BootstrapAutoDecisionSummary, BootstrapDiscoveryResult, DecisionRecord, DecisionStatus, LastProcessed, PendingItem, QbittorrentAddApiResponseItem, QbittorrentFailureItem, TorrentHistoryItem, TorrentItem, WatchRootStatus, WatchTarget } from '@shared/types'
+import {
+	blacklistState,
+	bootstrapDiscoveryState,
+	decisionsState,
+	ensureInitialData,
+	lastProcessedState,
+	pendingState,
+	qbittorrentFailuresState,
+	qbittorrentSubmittedState,
+	refreshWatchRoots,
+	refreshWatchTargets,
+	setBootstrapDiscoveryState,
+	setLastProcessedState,
+	torrentsState,
+	watchRootsState,
+	watchRootStatusesState,
+	watchTargetsState,
+} from './services/runtimeStateService'
+import {
+	createDecisionRecord,
+	finalizeSuccessfulTorrent,
+	resolveTorrentTarget,
+	sanitizeInternalNames,
+	submitDownloadedTorrent,
+} from './services/decisionWorkflowService'
+import type { AppStatus, BlacklistEntry, DecisionRecord, LastProcessed, PendingItem, QbittorrentFailureItem, TorrentHistoryItem, TorrentItem, WatchTarget } from '@shared/types'
 
 const serverPort = 8787
-const watchTargetsState: WatchTarget[] = []
-const torrentsState: TorrentItem[] = []
-const pendingState: PendingItem[] = []
-const decisionsState: DecisionRecord[] = []
-const qbittorrentFailuresState: QbittorrentFailureItem[] = []
-const qbittorrentAddResponsesState: QbittorrentAddApiResponseItem[] = []
-let qbittorrentSubmittedState = new Set<string>()
-const blacklistState: string[] = []
-const watchRootsState: string[] = []
-let watchRootStatusesState: WatchRootStatus[] = []
-let bootstrapDiscoveryState: BootstrapDiscoveryResult | undefined
-let lastProcessedState: LastProcessed | undefined
+
 
 interface ScrapeRunBody {
 	pages?: number[]
@@ -60,32 +71,6 @@ interface QbittorrentConfigBody {
 	password?: string
 }
 
-async function ensureInitialData(): Promise<void> {
-	await ensureDirectory(dataRoot)
-	await initStateFiles()
-	lastProcessedState = await loadLastProcessed()
-	bootstrapDiscoveryState = await loadBootstrapDiscovery()
-	blacklistState.splice(0, blacklistState.length, ...(await loadBlacklist()))
-	pendingState.splice(0, pendingState.length, ...(await loadPending()))
-	decisionsState.splice(0, decisionsState.length, ...(await loadDecisions()))
-	qbittorrentFailuresState.splice(0, qbittorrentFailuresState.length, ...(await loadQbittorrentFailures()))
-	qbittorrentAddResponsesState.splice(0, qbittorrentAddResponsesState.length, ...(await loadQbittorrentAddResponses()))
-	qbittorrentSubmittedState = await loadQbittorrentSubmitted()
-}
-
-async function refreshWatchTargets(): Promise<WatchTarget[]> {
-	const targets = await scanWatchTargets()
-	watchTargetsState.splice(0, watchTargetsState.length, ...targets)
-	return watchTargetsState
-}
-
-async function refreshWatchRoots(): Promise<string[]> {
-	const roots = await loadWatchRoots()
-	watchRootsState.splice(0, watchRootsState.length, ...roots)
-	watchRootStatusesState = await inspectWatchRoots(roots)
-	return watchRootsState
-}
-
 function rememberDownloadedTorrent(item: TorrentItem): void {
 	if (torrentsState.some((torrent) => torrent.torrentId === item.torrentId)) {
 		return
@@ -110,177 +95,8 @@ function buildTorrentHistory(): TorrentHistoryItem[] {
 	}))
 }
 
-async function recordTorrentAliases(seriesKey: string, internalNames: string[]): Promise<void> {
-	const aliasEntries = internalNames
-		.flatMap((name) => {
-			const trimmed = name.trim()
-			if (!trimmed) {
-				return []
-			}
-			return [[trimmed, seriesKey], [path.parse(trimmed).name, seriesKey]] as Array<[string, string]>
-		})
-	await upsertAliases(aliasEntries)
-}
-
-function resolveTorrentTarget(item: TorrentItem, videoNames: string[], aliases: Record<string, string>): WatchTarget {
-	const matchResult = buildTorrentMatchResult({ title: item.title, videoNames }, aliases)
-	const target = matchTorrentToWatchTargets(matchResult, watchTargetsState)
-	if (!target) {
-		throw badRequest(
-			`Unable to resolve qBittorrent destination folder for torrent ${item.torrentId} (page ${item.page}): ${item.title}`,
-			{
-				torrentId: item.torrentId,
-				title: item.title,
-				page: item.page,
-			},
-		)
-	}
-	return target
-}
-
 function listFailedQbittorrentIds(): Set<string> {
 	return new Set(qbittorrentFailuresState.map((item) => item.torrentId))
-}
-
-function removeQbittorrentFailure(torrentId: string): void {
-	const index = qbittorrentFailuresState.findIndex((item) => item.torrentId === torrentId)
-	if (index >= 0) {
-		qbittorrentFailuresState.splice(index, 1)
-	}
-}
-
-function recordQbittorrentFailure(item: QbittorrentFailureItem): void {
-	const index = qbittorrentFailuresState.findIndex((entry) => entry.torrentId === item.torrentId)
-	if (index >= 0) {
-		qbittorrentFailuresState[index] = item
-		return
-	}
-	qbittorrentFailuresState.unshift(item)
-}
-
-async function recordQbittorrentAddResponse(item: QbittorrentAddApiResponseItem): Promise<void> {
-	qbittorrentAddResponsesState.unshift(item)
-	const capped = qbittorrentAddResponsesState.slice(0, 500)
-	qbittorrentAddResponsesState.splice(0, qbittorrentAddResponsesState.length, ...capped)
-	await saveQbittorrentAddResponses(qbittorrentAddResponsesState)
-}
-
-function createDecisionRecord(item: TorrentItem, status: DecisionStatus, reason: string): DecisionRecord {
-	return {
-		torrentId: item.torrentId,
-		status,
-		reason,
-		createdAtUtc: new Date().toISOString(),
-		item,
-	}
-}
-
-async function persistPrimaryState(): Promise<void> {
-	await savePending(pendingState)
-	await saveDecisions(decisionsState)
-	await saveQbittorrentFailures(qbittorrentFailuresState)
-	if (lastProcessedState) {
-		await saveLastProcessed(lastProcessedState)
-	}
-}
-
-async function submitDownloadedTorrent(params: {
-	item: TorrentItem
-	torrentFilePath: string
-	torrentFilename: string
-	targetFolderPath: string
-	decisionStatus: Extract<DecisionStatus, 'auto_downloaded' | 'approved'>
-	decisionReason: string
-	source: QbittorrentFailureItem['source']
-	seriesKey?: string
-	internalNames?: string[]
-	forceResubmit?: boolean
-}): Promise<{ responseText?: string }> {
-	try {
-		const addResult = await addTorrentToQbittorrent({
-			torrentFilePath: params.torrentFilePath,
-			torrentFilename: params.torrentFilename,
-			savePath: params.targetFolderPath,
-		})
-		await recordQbittorrentAddResponse({
-			torrentId: params.item.torrentId,
-			createdAtUtc: new Date().toISOString(),
-			source: params.source,
-			decisionStatus: params.decisionStatus,
-			decisionReason: params.decisionReason,
-			requestBaseUrl: getQbittorrentRuntimeConfig().baseUrl,
-			targetFolderPath: params.targetFolderPath,
-			torrentFilename: params.torrentFilename,
-			forceResubmit: params.forceResubmit,
-			ok: addResult.ok,
-			status: addResult.status,
-			statusText: addResult.statusText,
-			responseText: addResult.responseText,
-		})
-		qbittorrentSubmittedState.add(params.item.torrentId)
-		await saveQbittorrentSubmitted(qbittorrentSubmittedState)
-		removeQbittorrentFailure(params.item.torrentId)
-		await saveQbittorrentFailures(qbittorrentFailuresState)
-		return { responseText: addResult.responseText }
-	} catch (error) {
-		const requestError = error instanceof QbittorrentRequestError ? error : new QbittorrentRequestError(error instanceof Error ? error.message : 'Failed to submit torrent to qBittorrent', 'http')
-		await recordQbittorrentAddResponse({
-			torrentId: params.item.torrentId,
-			createdAtUtc: new Date().toISOString(),
-			source: params.source,
-			decisionStatus: params.decisionStatus,
-			decisionReason: params.decisionReason,
-			requestBaseUrl: getQbittorrentRuntimeConfig().baseUrl,
-			targetFolderPath: params.targetFolderPath,
-			torrentFilename: params.torrentFilename,
-			forceResubmit: params.forceResubmit,
-			ok: false,
-			status: requestError.status,
-			statusText: requestError.status ? 'Error' : undefined,
-			responseText: requestError.responseText,
-			errorKind: requestError.kind,
-			errorMessage: requestError.message,
-		})
-		recordQbittorrentFailure({
-			torrentId: params.item.torrentId,
-			createdAtUtc: new Date().toISOString(),
-			source: params.source,
-			decisionStatus: params.decisionStatus,
-			decisionReason: params.decisionReason,
-			item: params.item,
-			targetFolderPath: params.targetFolderPath,
-			torrentFilePath: params.torrentFilePath,
-			torrentFilename: params.torrentFilename,
-			errorKind: requestError.kind,
-			errorMessage: requestError.message,
-			suggestion: requestError.suggestion,
-			seriesKey: params.seriesKey,
-			internalNames: params.internalNames,
-		})
-		await saveQbittorrentFailures(qbittorrentFailuresState)
-		throw badRequest(requestError.message, {
-			kind: requestError.kind,
-			torrentId: params.item.torrentId,
-			suggestion: requestError.suggestion,
-		})
-	}
-}
-
-async function finalizeSuccessfulTorrent(params: {
-	item: TorrentItem
-	decisionStatus: Extract<DecisionStatus, 'auto_downloaded' | 'approved'>
-	decisionReason: string
-	seriesKey?: string
-	internalNames?: string[]
-}): Promise<DecisionRecord> {
-	rememberDownloadedTorrent(params.item)
-	if (params.seriesKey) {
-		await recordTorrentAliases(params.seriesKey, params.internalNames ?? [])
-	}
-	const decision = createDecisionRecord(params.item, params.decisionStatus, params.decisionReason)
-	removeQbittorrentFailure(params.item.torrentId)
-	await saveQbittorrentFailures(qbittorrentFailuresState)
-	return decision
 }
 
 function buildStatus(): AppStatus {
@@ -320,573 +136,6 @@ function parseBlacklistEntry(key: string): BlacklistEntry {
 	}
 }
 
-function lookupLatestQbResponseText(torrentId: string): string | undefined {
-	const latest = qbittorrentAddResponsesState.find((entry) => entry.torrentId === torrentId)
-	const text = latest?.responseText?.trim()
-	return text ? text : undefined
-}
-
-function buildBootstrapSummary(
-	item: TorrentItem,
-	status: DecisionRecord['status'],
-	reason: string,
-	itemIndex: number,
-	qbResponseText?: string,
-	fileMissing?: boolean,
-	newlyFound?: boolean,
-	resubmittedFromNyaa?: boolean,
-): BootstrapAutoDecisionSummary {
-	return {
-		torrentId: item.torrentId,
-		title: item.title,
-		status,
-		reason,
-		fileMissing,
-		newlyFound,
-		resubmittedFromNyaa,
-		qbResponseText,
-		page: item.page,
-		itemIndex,
-	}
-}
-
-function parseNyaaResultsStats(html: string): { text?: string; last?: number; total?: number; hasNextPage?: boolean } {
-	const match = /Displaying results\s+(\d[\d,]*)\s*-\s*(\d[\d,]*)\s+out of\s+(\d[\d,]*)\s+results\./i.exec(html)
-	if (!match) {
-		return {}
-	}
-
-	const parseNumber = (value: string) => Number.parseInt(value.replace(/,/g, ''), 10)
-	const first = parseNumber(match[1] ?? '')
-	const last = parseNumber(match[2] ?? '')
-	const total = parseNumber(match[3] ?? '')
-	const text = `Displaying results ${first}-${last} out of ${total} results.`
-
-	if (!Number.isFinite(last) || !Number.isFinite(total)) {
-		return { text }
-	}
-
-	return {
-		text,
-		last,
-		total,
-		hasNextPage: last < total,
-	}
-}
-
-function sanitizeInternalNames(names: string[] | undefined): string[] {
-	if (!names) {
-		return []
-	}
-	return Array.from(new Set(
-		names
-			.map((name) => name.trim())
-			.filter((name) => name.length > 0 && name.toLowerCase() !== 'unknown'),
-	))
-}
-
-function getDecisionInternalNames(decision: DecisionRecord): string[] {
-	let internalNames = sanitizeInternalNames((decision as DecisionRecord & { internalNames?: string[] }).internalNames)
-	if (internalNames.length === 0) {
-		internalNames = sanitizeInternalNames((decision.item as TorrentItem & { internalNames?: string[] }).internalNames)
-	}
-	return internalNames
-}
-
-async function findReplayLocalMatch(decision: DecisionRecord, aliases: Record<string, string>): Promise<ExistingLocalMatch | undefined> {
-	const matchResult = buildTorrentMatchResult({
-		title: decision.item.title,
-		videoNames: getDecisionInternalNames(decision),
-	}, aliases)
-	const target = matchTorrentToWatchTargets(matchResult, watchTargetsState)
-	if (!target) {
-		return undefined
-	}
-	return findExistingLocalMatchByTitle(target, decision.item.title)
-}
-
-async function discoverLastDownloadedCheckpointStep(input?: BootstrapDiscoverStepBody): Promise<BootstrapDiscoveryResult> {
-	const startedAtUtc = new Date().toISOString()
-	const page = input?.page && Number.isInteger(input.page) && input.page > 0 ? input.page : 1
-	const startItemIndex = input?.itemIndex && Number.isInteger(input.itemIndex) && input.itemIndex >= 0 ? input.itemIndex : 0
-	const qbForceResubmit = input?.qbForceResubmit === true
-	let pagesScanned = 1
-	let inspectedCount = 0
-	const autoApproved: BootstrapAutoDecisionSummary[] = []
-	const autoRejected: BootstrapAutoDecisionSummary[] = []
-	const alreadyDownloaded: BootstrapAutoDecisionSummary[] = []
-	const backfilled: BootstrapAutoDecisionSummary[] = []
-
-	await refreshWatchRoots()
-	await refreshWatchTargets()
-	const aliases = await loadAliases()
-	const processedTorrentIds = listDecisionTorrentIds(decisionsState)
-	const pendingTorrentIds = listPendingTorrentIds(pendingState)
-	const qbittorrentFailedIds = listFailedQbittorrentIds()
-
-	if (watchTargetsState.length === 0) {
-		const result: BootstrapDiscoveryResult = {
-			startedAtUtc,
-			finishedAtUtc: new Date().toISOString(),
-			pagesScanned,
-			inspectedCount,
-			found: false,
-			mode: 'no_items',
-			currentPage: page,
-			currentItemIndex: startItemIndex,
-			nextPage: page,
-			nextItemIndex: startItemIndex,
-			autoApproved,
-			autoRejected,
-			alreadyDownloaded,
-			backfilled,
-			reason: 'No watch targets available for bootstrap discovery',
-		}
-		bootstrapDiscoveryState = result
-		await saveBootstrapDiscovery(result)
-		return result
-	}
-
-	const { html, items } = await scrapeNyaaPage(page)
-	await savePageSnapshot(page, html, items)
-	const nyaaResultsStats = parseNyaaResultsStats(html)
-	const pageCursorToken = `${page}:${items.length}:${items[0]?.torrentId ?? 'none'}:${items[items.length - 1]?.torrentId ?? 'none'}`
-
-	if (startItemIndex > 0 && input?.cursorToken && input.cursorToken !== pageCursorToken) {
-		throw badRequest('Bootstrap cursor became stale. Restart from itemIndex 0 for this page.')
-	}
-
-	if (startItemIndex >= items.length) {
-		const result: BootstrapDiscoveryResult = {
-			startedAtUtc,
-			finishedAtUtc: new Date().toISOString(),
-			pagesScanned,
-			inspectedCount,
-			found: false,
-			nyaaResultsText: nyaaResultsStats.text,
-			nyaaResultsLast: nyaaResultsStats.last,
-			nyaaResultsTotal: nyaaResultsStats.total,
-			hasNextPage: nyaaResultsStats.hasNextPage,
-			mode: 'page_completed',
-			currentPage: page,
-			currentItemIndex: startItemIndex,
-			nextPage: page + 1,
-			nextItemIndex: 0,
-			nextCursorToken: undefined,
-			autoApproved,
-			autoRejected,
-			alreadyDownloaded,
-			backfilled,
-			reason: `Page ${page} already exhausted`,
-		}
-		bootstrapDiscoveryState = result
-		await saveBootstrapDiscovery(result)
-		return result
-	}
-
-	for (let itemIndex = startItemIndex; itemIndex < items.length; itemIndex += 1) {
-		const item = items[itemIndex]!
-		if (processedTorrentIds.has(item.torrentId) || pendingTorrentIds.has(item.torrentId) || qbittorrentFailedIds.has(item.torrentId)) {
-			const latestDecision = processedTorrentIds.has(item.torrentId)
-				? decisionsState.findLast((decision) => decision.torrentId === item.torrentId)
-				: undefined
-			if (latestDecision) {
-				const replayLocalMatch = await findReplayLocalMatch(latestDecision, aliases)
-				if (replayLocalMatch) {
-					const upgradedFromDifferentStatus = latestDecision.status !== 'already_downloaded'
-					const replayReason = latestDecision.status === 'already_downloaded'
-						? `${replayLocalMatch.reason} (replayed from history)`
-						: `${replayLocalMatch.reason} (replayed from history; previous status: ${latestDecision.status})`
-					alreadyDownloaded.push(buildBootstrapSummary(
-						latestDecision.item,
-						'already_downloaded',
-						replayReason,
-						itemIndex,
-						undefined,
-						undefined,
-						upgradedFromDifferentStatus,
-					))
-					inspectedCount += 1
-					continue
-				}
-
-				if (latestDecision.status === 'already_downloaded') {
-					let usedMetainfoFallback = false
-					let usedFilenameFallback = false
-					let usedNyaaDownloadFallback = false
-					const existingTorrent = await findDownloadedTorrentFileById(item.torrentId)
-					const torrentToSubmit = existingTorrent ?? await downloadTorrentFile(latestDecision.item)
-					if (!existingTorrent) {
-						usedNyaaDownloadFallback = true
-					}
-					let decisionInternalNames = getDecisionInternalNames(latestDecision)
-					if (decisionInternalNames.length === 0) {
-						const metainfo = await readFile(torrentToSubmit.filePath)
-							.then((buffer) => parseTorrentMetainfo(buffer))
-							.catch(() => undefined)
-						if (metainfo) {
-							decisionInternalNames = sanitizeInternalNames(metainfo.videoNames.length > 0 ? metainfo.videoNames : [metainfo.name])
-							if (decisionInternalNames.length > 0) {
-								usedMetainfoFallback = true
-							}
-						}
-					}
-					if (decisionInternalNames.length === 0) {
-						const filenameCandidate = torrentToSubmit.filename
-							.replace(new RegExp(`-${item.torrentId}\\.torrent$`, 'i'), '')
-							.replace(/\.torrent$/i, '')
-							.trim()
-						decisionInternalNames = sanitizeInternalNames([filenameCandidate])
-						if (decisionInternalNames.length > 0) {
-							usedFilenameFallback = true
-						}
-					}
-					const target = resolveTorrentTarget(latestDecision.item, decisionInternalNames, aliases)
-					const resubmitReason = `${latestDecision.reason} (replayed from history; local file missing -> resubmitted)`
-					const submitResult = await submitDownloadedTorrent({
-						item: latestDecision.item,
-						torrentFilePath: torrentToSubmit.filePath,
-						torrentFilename: torrentToSubmit.filename,
-						targetFolderPath: target.folderPath,
-						decisionStatus: 'approved',
-						decisionReason: resubmitReason,
-						source: 'bootstrap',
-						seriesKey: (latestDecision as DecisionRecord & { seriesKey?: string }).seriesKey,
-						internalNames: decisionInternalNames,
-						forceResubmit: qbForceResubmit,
-					})
-					const backfillSources: string[] = []
-					if (usedNyaaDownloadFallback) {
-						backfillSources.push('fresh Nyaa torrent download')
-					}
-					if (usedMetainfoFallback) {
-						backfillSources.push('local torrent metainfo')
-					}
-					if (usedFilenameFallback) {
-						backfillSources.push('saved torrent filename')
-					}
-					const backfillReason = backfillSources.length > 0
-						? `${resubmitReason} (backfill using ${backfillSources.join(' + ')})`
-						: resubmitReason
-					backfilled.push(buildBootstrapSummary(
-						latestDecision.item,
-						latestDecision.status,
-						backfillReason,
-						itemIndex,
-						submitResult.responseText ?? lookupLatestQbResponseText(latestDecision.item.torrentId),
-						true,
-						undefined,
-						usedNyaaDownloadFallback,
-					))
-					inspectedCount += 1
-					continue
-				}
-			}
-			if (latestDecision && (qbForceResubmit || !qbittorrentSubmittedState.has(item.torrentId))) {
-				if (latestDecision && (latestDecision.status === 'auto_downloaded' || latestDecision.status === 'approved')) {
-					const existingTorrent = await findDownloadedTorrentFileById(item.torrentId)
-					if (existingTorrent) {
-						let usedMetainfoFallback = false
-						let usedFilenameFallback = false
-						let decisionInternalNames = getDecisionInternalNames(latestDecision)
-						if (decisionInternalNames.length === 0) {
-							const metainfo = await readFile(existingTorrent.filePath)
-								.then((buffer) => parseTorrentMetainfo(buffer))
-								.catch(() => undefined)
-							if (metainfo) {
-								decisionInternalNames = sanitizeInternalNames(metainfo.videoNames.length > 0 ? metainfo.videoNames : [metainfo.name])
-								if (decisionInternalNames.length > 0) {
-									usedMetainfoFallback = true
-								}
-							}
-						}
-						if (decisionInternalNames.length === 0) {
-							const filenameCandidate = existingTorrent.filename
-								.replace(new RegExp(`-${item.torrentId}\\.torrent$`, 'i'), '')
-								.replace(/\.torrent$/i, '')
-								.trim()
-							decisionInternalNames = sanitizeInternalNames([filenameCandidate])
-							if (decisionInternalNames.length > 0) {
-								usedFilenameFallback = true
-							}
-						}
-						const target = resolveTorrentTarget(latestDecision.item, decisionInternalNames, aliases)
-						const submitResult = await submitDownloadedTorrent({
-							item: latestDecision.item,
-							torrentFilePath: existingTorrent.filePath,
-							torrentFilename: existingTorrent.filename,
-							targetFolderPath: target.folderPath,
-							decisionStatus: latestDecision.status,
-							decisionReason: latestDecision.reason,
-							source: 'bootstrap',
-							seriesKey: (latestDecision as DecisionRecord & { seriesKey?: string }).seriesKey,
-							internalNames: decisionInternalNames,
-							forceResubmit: qbForceResubmit,
-						})
-						const backfillSources: string[] = []
-						if (usedMetainfoFallback) {
-							backfillSources.push('local torrent metainfo')
-						}
-						if (usedFilenameFallback) {
-							backfillSources.push('saved torrent filename')
-						}
-						const backfillReason = backfillSources.length > 0
-							? `${latestDecision.reason} (backfill using ${backfillSources.join(' + ')})`
-							: latestDecision.reason
-						backfilled.push(buildBootstrapSummary(
-							latestDecision.item,
-							latestDecision.status,
-							backfillReason,
-							itemIndex,
-							submitResult.responseText ?? lookupLatestQbResponseText(latestDecision.item.torrentId),
-						))
-					}
-				}
-			}
-
-			if (latestDecision) {
-				if (latestDecision.status === 'auto_downloaded' || latestDecision.status === 'approved') {
-					autoApproved.push(buildBootstrapSummary(
-						latestDecision.item,
-						latestDecision.status,
-						`${latestDecision.reason} (replayed from history)`,
-						itemIndex,
-						lookupLatestQbResponseText(latestDecision.item.torrentId),
-					))
-					inspectedCount += 1
-					continue
-				}
-				if (latestDecision.status === 'blocked' || latestDecision.status === 'skipped') {
-					autoRejected.push(buildBootstrapSummary(latestDecision.item, latestDecision.status, `${latestDecision.reason} (replayed from history)`, itemIndex))
-					inspectedCount += 1
-					continue
-				}
-				if (latestDecision.status === 'already_downloaded') {
-					alreadyDownloaded.push(buildBootstrapSummary(latestDecision.item, latestDecision.status, `${latestDecision.reason} (replayed from history)`, itemIndex))
-					inspectedCount += 1
-					continue
-				}
-				if (latestDecision.status === 'pending') {
-					autoRejected.push(buildBootstrapSummary(latestDecision.item, latestDecision.status, `${latestDecision.reason} (already pending from history)`, itemIndex))
-					inspectedCount += 1
-					continue
-				}
-			}
-
-			if (pendingTorrentIds.has(item.torrentId)) {
-				const pendingItem = pendingState.find((entry) => entry.torrentId === item.torrentId)
-				if (pendingItem) {
-					autoRejected.push(buildBootstrapSummary(pendingItem.item, pendingItem.status, `${pendingItem.reason} (already pending from queue)`, itemIndex))
-					inspectedCount += 1
-					continue
-				}
-			}
-			continue
-		}
-
-		inspectedCount += 1
-		const quickMatch = buildTorrentMatchResult({ title: item.title, videoNames: [] }, aliases)
-		const titleMatchedTarget = matchTorrentToWatchTargets(quickMatch, watchTargetsState)
-
-		if (blacklistState.includes(quickMatch.normalizedKey)) {
-			const decision = createDecisionRecord(
-				{ ...item, seriesBaseRaw: quickMatch.seriesBaseRaw, resolution: quickMatch.resolution, matchCandidates: quickMatch.matchCandidates },
-				'blocked',
-				'series+resolution blacklisted',
-			)
-			decisionsState.push(decision)
-			processedTorrentIds.add(item.torrentId)
-			autoRejected.push(buildBootstrapSummary(item, 'blocked', decision.reason, itemIndex))
-			continue
-		}
-
-		if (titleMatchedTarget) {
-			const existingLocal = await findExistingLocalMatchByTitle(titleMatchedTarget, item.title)
-			if (existingLocal) {
-				const decision = createDecisionRecord(
-					{ ...item, seriesBaseRaw: quickMatch.seriesBaseRaw, resolution: quickMatch.resolution, matchCandidates: quickMatch.matchCandidates },
-					'already_downloaded',
-					existingLocal.reason,
-				)
-				decisionsState.push(decision)
-				processedTorrentIds.add(item.torrentId)
-				alreadyDownloaded.push(buildBootstrapSummary(item, 'already_downloaded', decision.reason, itemIndex))
-				lastProcessedState = {
-					lastTorrentId: item.torrentId,
-					lastSeenPage: page,
-					lastRunAt: new Date().toISOString(),
-					bootstrapMode: 'checkpoint',
-				}
-				continue
-			}
-
-			const downloadedTorrent = await downloadTorrentFile(item)
-			const matchedItem = { ...item, seriesBaseRaw: quickMatch.seriesBaseRaw, resolution: quickMatch.resolution, matchCandidates: quickMatch.matchCandidates }
-			const submitResult = await submitDownloadedTorrent({
-				item: matchedItem,
-				torrentFilePath: downloadedTorrent.filePath,
-				torrentFilename: downloadedTorrent.filename,
-				targetFolderPath: titleMatchedTarget.folderPath,
-				decisionStatus: 'auto_downloaded',
-				decisionReason: `matched ${titleMatchedTarget.normalizedKey} by title`,
-				source: 'bootstrap',
-				seriesKey: titleMatchedTarget.seriesKey,
-				internalNames: [],
-			})
-			const decision = await finalizeSuccessfulTorrent({
-				item: matchedItem,
-				decisionStatus: 'auto_downloaded',
-				decisionReason: `matched ${titleMatchedTarget.normalizedKey} by title`,
-				seriesKey: titleMatchedTarget.seriesKey,
-				internalNames: [],
-			})
-			decisionsState.push(decision)
-			processedTorrentIds.add(item.torrentId)
-			autoApproved.push(buildBootstrapSummary(item, 'auto_downloaded', decision.reason, itemIndex, submitResult.responseText))
-			lastProcessedState = {
-				lastTorrentId: item.torrentId,
-				lastSeenPage: page,
-				lastRunAt: new Date().toISOString(),
-				bootstrapMode: 'assisted',
-			}
-			continue
-		}
-
-		const classified = await inspectAndClassifyTorrent(item, aliases, watchTargetsState, blacklistState)
-
-		if (classified.status === 'already_downloaded') {
-			const decision = createDecisionRecord(classified, 'already_downloaded', classified.reason)
-			decisionsState.push(decision)
-			processedTorrentIds.add(item.torrentId)
-			alreadyDownloaded.push(buildBootstrapSummary(classified, 'already_downloaded', classified.reason, itemIndex))
-			lastProcessedState = {
-				lastTorrentId: classified.torrentId,
-				lastSeenPage: page,
-				lastRunAt: new Date().toISOString(),
-				bootstrapMode: 'checkpoint',
-			}
-			continue
-		}
-
-		if (classified.status === 'pending') {
-			const decision = createDecisionRecord(classified, 'pending', classified.reason)
-			decisionsState.push(decision)
-			processedTorrentIds.add(item.torrentId)
-			const pendingItem: PendingItem = {
-				torrentId: classified.torrentId,
-				status: classified.status,
-				reason: classified.reason,
-				item: classified,
-				seriesKey: classified.seriesKey,
-				internalNames: classified.internalNames,
-			}
-			pendingState.push(pendingItem)
-			pendingTorrentIds.add(item.torrentId)
-			await savePending(pendingState)
-			await saveDecisions(decisionsState)
-			const result: BootstrapDiscoveryResult = {
-				startedAtUtc,
-				finishedAtUtc: new Date().toISOString(),
-				pagesScanned,
-				inspectedCount,
-				found: false,
-				nyaaResultsText: nyaaResultsStats.text,
-				nyaaResultsLast: nyaaResultsStats.last,
-				nyaaResultsTotal: nyaaResultsStats.total,
-				hasNextPage: nyaaResultsStats.hasNextPage,
-				mode: 'needs_review',
-				currentPage: page,
-				currentItemIndex: itemIndex,
-				nextPage: itemIndex + 1 < items.length ? page : page + 1,
-				nextItemIndex: itemIndex + 1 < items.length ? itemIndex + 1 : 0,
-				nextCursorToken: itemIndex + 1 < items.length ? pageCursorToken : undefined,
-				actionItem: pendingItem,
-				autoApproved,
-				autoRejected,
-				alreadyDownloaded,
-				backfilled,
-				reason: classified.reason,
-				torrentId: classified.torrentId,
-				title: classified.title,
-			}
-			bootstrapDiscoveryState = result
-			await saveBootstrapDiscovery(result)
-			return result
-		}
-
-		if (classified.status === 'auto_downloaded') {
-			const downloadedTorrent = await downloadTorrentFile(classified)
-			const target = classified.matchedTarget ?? resolveTorrentTarget(classified, classified.internalNames ?? [], aliases)
-			const submitResult = await submitDownloadedTorrent({
-				item: classified,
-				torrentFilePath: downloadedTorrent.filePath,
-				torrentFilename: downloadedTorrent.filename,
-				targetFolderPath: target.folderPath,
-				decisionStatus: 'auto_downloaded',
-				decisionReason: classified.reason,
-				source: 'bootstrap',
-				seriesKey: classified.matchedTarget?.seriesKey ?? classified.seriesKey,
-				internalNames: classified.internalNames,
-			})
-			const decision = await finalizeSuccessfulTorrent({
-				item: classified,
-				decisionStatus: 'auto_downloaded',
-				decisionReason: classified.reason,
-				seriesKey: classified.matchedTarget?.seriesKey ?? classified.seriesKey,
-				internalNames: classified.internalNames,
-			})
-			decisionsState.push(decision)
-			processedTorrentIds.add(item.torrentId)
-			autoApproved.push(buildBootstrapSummary(classified, 'auto_downloaded', classified.reason, itemIndex, submitResult.responseText))
-			lastProcessedState = {
-				lastTorrentId: classified.torrentId,
-				lastSeenPage: page,
-				lastRunAt: new Date().toISOString(),
-				bootstrapMode: 'assisted',
-			}
-			continue
-		}
-
-		if (classified.status === 'blocked') {
-			const decision = createDecisionRecord(classified, 'blocked', classified.reason)
-			decisionsState.push(decision)
-			processedTorrentIds.add(item.torrentId)
-			autoRejected.push(buildBootstrapSummary(classified, 'blocked', classified.reason, itemIndex))
-		}
-	}
-
-	const result: BootstrapDiscoveryResult = {
-		startedAtUtc,
-		finishedAtUtc: new Date().toISOString(),
-		pagesScanned,
-		inspectedCount,
-		found: false,
-		nyaaResultsText: nyaaResultsStats.text,
-		nyaaResultsLast: nyaaResultsStats.last,
-		nyaaResultsTotal: nyaaResultsStats.total,
-		hasNextPage: nyaaResultsStats.hasNextPage,
-		mode: 'page_completed',
-		currentPage: page,
-		currentItemIndex: items.length,
-		nextPage: page + 1,
-		nextItemIndex: 0,
-		nextCursorToken: undefined,
-		autoApproved,
-		autoRejected,
-		alreadyDownloaded,
-		backfilled,
-		reason: `Page ${page} completed without manual stop`,
-	}
-
-	await savePending(pendingState)
-	await saveDecisions(decisionsState)
-	if (lastProcessedState) {
-		await saveLastProcessed(lastProcessedState)
-	}
-	bootstrapDiscoveryState = result
-	await saveBootstrapDiscovery(result)
-	return result
-}
 
 async function approvePendingItemByIndex(pendingIndex: number): Promise<DecisionRecord> {
 	const pendingItem = pendingState[pendingIndex]!
@@ -1005,12 +254,12 @@ async function runScrapeForPage(page: number, bootstrapMode: LastProcessed['boot
 			processedTorrentIds.add(item.torrentId)
 			auto++
 		}
-		lastProcessedState = {
+		setLastProcessedState({
 			lastTorrentId: classified.torrentId,
 			lastSeenPage: page,
 			lastRunAt: new Date().toISOString(),
 			bootstrapMode,
-		}
+		})
 	}
 
 	await savePending(pendingState)
@@ -1187,7 +436,7 @@ async function main(): Promise<void> {
 	})
 
 	app.post('/api/bootstrap/discovery/clear', async () => {
-		bootstrapDiscoveryState = undefined
+		setBootstrapDiscoveryState(undefined)
 		await saveBootstrapDiscovery(undefined)
 		return { success: true, data: { status: buildStatus() } }
 	})
@@ -1299,8 +548,10 @@ async function main(): Promise<void> {
 		const shouldAdvance = Boolean(body?.next)
 		if (shouldAdvance) {
 			const nextPage = Math.max(1, (lastProcessedState?.lastSeenPage ?? 1) - 1)
-			lastProcessedState = advanceCheckpoint(lastProcessedState, lastProcessedState?.lastTorrentId ?? 'bootstrap', nextPage, lastProcessedState?.bootstrapMode ?? 'assisted')
-			await saveLastProcessed(lastProcessedState)
+			setLastProcessedState(advanceCheckpoint(lastProcessedState, lastProcessedState?.lastTorrentId ?? 'bootstrap', nextPage, lastProcessedState?.bootstrapMode ?? 'assisted'))
+			if (lastProcessedState) {
+				await saveLastProcessed(lastProcessedState)
+			}
 			return { success: true, data: { next: true, page: nextPage, checkpoint: lastProcessedState } }
 		}
 		return { success: true, data: { next: false, checkpoint: lastProcessedState ?? null } }

@@ -36,3 +36,5 @@ qbittorrent password.txt
 
 # Finder (MacOS) folder config
 .DS_Store
+
+*.ignore.*
