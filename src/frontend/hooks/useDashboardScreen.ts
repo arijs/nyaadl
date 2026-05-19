@@ -3,6 +3,7 @@ import type { StatusResponse } from '../../shared/api'
 import { useDashboardActions } from './useDashboardActions'
 import { useBootstrapSessionLog } from './useBootstrapSessionLog'
 import { useBootstrapWorkflow } from './useBootstrapWorkflow'
+import { useBlacklistManager } from './useBlacklistManager'
 import { useTorrentHistoryFilter } from './useTorrentHistoryFilter'
 import { useWatchRoots } from './useWatchRoots'
 
@@ -19,6 +20,7 @@ export function useDashboardScreen() {
 	const bootstrapLog = useBootstrapSessionLog()
 	const watchRoots = useWatchRoots({ refetch })
 	const torrentHistoryFilter = useTorrentHistoryFilter({ status })
+	const blacklistManager = useBlacklistManager({ refetch })
 	const dashboardActions = useDashboardActions({ refetch })
 	const bootstrapWorkflow = useBootstrapWorkflow({
 		status,
@@ -31,6 +33,7 @@ export function useDashboardScreen() {
 		bootstrapLog,
 		watchRoots,
 		torrentHistoryFilter,
+		blacklistManager,
 		dashboardActions,
 		bootstrapWorkflow,
 	}

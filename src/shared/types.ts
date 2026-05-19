@@ -28,6 +28,12 @@ export interface WatchTarget {
 	matchCandidates: string[]
 }
 
+export interface BlacklistEntry {
+	key: string
+	seriesKey: string
+	resolution: string
+}
+
 export interface PendingItem {
 	torrentId: string
 	status: DecisionStatus

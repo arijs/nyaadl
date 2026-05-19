@@ -5,6 +5,7 @@ import TorrentHistorySection from './components/sections/TorrentHistorySection'
 import WatchedRootsSection from './components/sections/WatchedRootsSection'
 import BootstrapSessionLogSection from './components/sections/BootstrapSessionLogSection'
 import BootstrapDiscoverySection from './components/sections/BootstrapDiscoverySection'
+import BlacklistManagerSection from './components/sections/BlacklistManagerSection'
 import { useDashboardScreen } from './hooks/useDashboardScreen'
 
 export default function App() {
@@ -13,6 +14,7 @@ export default function App() {
 		bootstrapLog,
 		watchRoots,
 		torrentHistoryFilter,
+		blacklistManager,
 		dashboardActions,
 		bootstrapWorkflow,
 	} = useDashboardScreen()
@@ -49,6 +51,8 @@ export default function App() {
 					dashboardActions={dashboardActions}
 					bootstrapWorkflow={bootstrapWorkflow}
 				/>
+
+				<BlacklistManagerSection blacklistManager={blacklistManager} />
 
 				<TorrentHistorySection torrentHistoryFilter={torrentHistoryFilter} />
 				<BootstrapSessionLogSection bootstrapLog={bootstrapLog} />

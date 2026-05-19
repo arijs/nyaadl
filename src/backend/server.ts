@@ -19,7 +19,7 @@ import { findExistingLocalMatchByTitle, type ExistingLocalMatch } from './servic
 import { buildTorrentMatchResult, matchTorrentToWatchTargets } from './services/matchingService'
 import { buildNormalizedKey, deriveSeriesBase } from './services/normalizeService'
 import { listDecisionTorrentIds, listPendingTorrentIds } from './services/stateService'
-import type { AppStatus, BootstrapAutoDecisionSummary, BootstrapDiscoveryResult, DecisionRecord, DecisionStatus, LastProcessed, PendingItem, QbittorrentAddApiResponseItem, QbittorrentFailureItem, TorrentHistoryItem, TorrentItem, WatchRootStatus, WatchTarget } from '@shared/types'
+import type { AppStatus, BlacklistEntry, BootstrapAutoDecisionSummary, BootstrapDiscoveryResult, DecisionRecord, DecisionStatus, LastProcessed, PendingItem, QbittorrentAddApiResponseItem, QbittorrentFailureItem, TorrentHistoryItem, TorrentItem, WatchRootStatus, WatchTarget } from '@shared/types'
 
 const serverPort = 8787
 const watchTargetsState: WatchTarget[] = []
@@ -298,6 +298,25 @@ function buildStatus(): AppStatus {
 		watchRoots: watchRootsState,
 		watchRootStatuses: watchRootStatusesState,
 		lastBootstrapDiscovery: bootstrapDiscoveryState,
+	}
+}
+
+function parseBlacklistEntry(key: string): BlacklistEntry {
+	const separatorIndex = key.lastIndexOf('::')
+	if (separatorIndex < 0) {
+		return {
+			key,
+			seriesKey: key,
+			resolution: 'unknown',
+		}
+	}
+
+	const seriesKey = key.slice(0, separatorIndex).trim() || key
+	const resolution = key.slice(separatorIndex + 2).trim() || 'unknown'
+	return {
+		key,
+		seriesKey,
+		resolution,
 	}
 }
 
@@ -1139,6 +1158,24 @@ async function main(): Promise<void> {
 	app.get('/api/watchlist', () => ({ success: true, data: watchTargetsState }))
 	app.get('/api/pending', () => ({ success: true, data: pendingState }))
 	app.get('/api/torrents', () => ({ success: true, data: buildTorrentHistory() }))
+	app.get('/api/blacklist', () => ({ success: true, data: blacklistState.map(parseBlacklistEntry) }))
+
+	app.delete('/api/blacklist', async (event) => {
+		const body = await readBody<{ key?: string }>(event).catch(() => undefined)
+		const key = body?.key?.trim()
+		if (!key) {
+			throw badRequest('Missing blacklist key')
+		}
+
+		const index = blacklistState.findIndex((item) => item === key)
+		if (index < 0) {
+			throw notFound('Blacklist item not found')
+		}
+
+		blacklistState.splice(index, 1)
+		await saveBlacklist(blacklistState)
+		return { success: true, data: { removed: key, items: blacklistState.map(parseBlacklistEntry) } }
+	})
 
 	app.post('/api/pending/:id/approve', async (event) => {
 		const torrentId = event.context.params?.id
