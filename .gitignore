@@ -2,6 +2,7 @@
 node_modules
 /torrents
 /_private
+/data
 
 # output
 out

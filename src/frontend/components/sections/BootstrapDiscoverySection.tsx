@@ -186,7 +186,17 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 									</div>
 									<Show when={!alreadyDownloadedCollapsed()}>
 										<For each={showAllAlreadyDownloaded() ? (bootstrap().alreadyDownloaded ?? []) : (bootstrap().alreadyDownloaded?.slice(0, previewLimit) ?? [])}>
-											{(entry) => <p class="mt-1 text-xs text-sky-100">p{entry.page} #{entry.itemIndex}: {entry.title}</p>}
+											{(entry) => (
+												<p class="mt-1 text-xs text-sky-100">
+													p{entry.page} #{entry.itemIndex}: {entry.title}
+													<Show when={entry.newlyFound}>
+														<span class="ml-2 font-bold text-emerald-300">Newly found</span>
+													</Show>
+													<Show when={entry.fileMissing}>
+														<span class="ml-2 font-bold text-rose-300">File missing</span>
+													</Show>
+												</p>
+											)}
 										</For>
 									</Show>
 								</div>

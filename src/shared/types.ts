@@ -161,6 +161,8 @@ export interface BootstrapAutoDecisionSummary {
 	title: string
 	status: DecisionStatus
 	reason: string
+	fileMissing?: boolean
+	newlyFound?: boolean
 	qbResponseText?: string
 	page: number
 	itemIndex: number

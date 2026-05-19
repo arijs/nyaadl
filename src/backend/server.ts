@@ -12,7 +12,7 @@ import { buildDailyReport } from './services/reportService'
 import { inspectAndClassifyTorrent, savePageSnapshot, scrapeNyaaPage } from './services/nyaaScraperService'
 import { parseTorrentMetainfo } from './services/torrentMetainfoService'
 import { initStateFiles, loadBlacklist, loadBootstrapDiscovery, loadDecisions, loadLastProcessed, loadPending, loadQbittorrentAddResponses, loadQbittorrentFailures, loadQbittorrentSubmitted, saveBlacklist, saveBootstrapDiscovery, saveDecisions, saveLastProcessed, savePending, saveQbittorrentAddResponses, saveQbittorrentFailures, saveQbittorrentSubmitted } from './services/stateService'
-import { findExistingLocalMatchByTitle } from './services/localLibraryService'
+import { findExistingLocalMatchByTitle, type ExistingLocalMatch } from './services/localLibraryService'
 import { buildTorrentMatchResult, matchTorrentToWatchTargets } from './services/matchingService'
 import { buildNormalizedKey } from './services/normalizeService'
 import { listDecisionTorrentIds, listPendingTorrentIds } from './services/stateService'
@@ -310,12 +310,16 @@ function buildBootstrapSummary(
 	reason: string,
 	itemIndex: number,
 	qbResponseText?: string,
+	fileMissing?: boolean,
+	newlyFound?: boolean,
 ): BootstrapAutoDecisionSummary {
 	return {
 		torrentId: item.torrentId,
 		title: item.title,
 		status,
 		reason,
+		fileMissing,
+		newlyFound,
 		qbResponseText,
 		page: item.page,
 		itemIndex,
@@ -331,6 +335,26 @@ function sanitizeInternalNames(names: string[] | undefined): string[] {
 			.map((name) => name.trim())
 			.filter((name) => name.length > 0 && name.toLowerCase() !== 'unknown'),
 	))
+}
+
+function getDecisionInternalNames(decision: DecisionRecord): string[] {
+	let internalNames = sanitizeInternalNames((decision as DecisionRecord & { internalNames?: string[] }).internalNames)
+	if (internalNames.length === 0) {
+		internalNames = sanitizeInternalNames((decision.item as TorrentItem & { internalNames?: string[] }).internalNames)
+	}
+	return internalNames
+}
+
+async function findReplayLocalMatch(decision: DecisionRecord, aliases: Record<string, string>): Promise<ExistingLocalMatch | undefined> {
+	const matchResult = buildTorrentMatchResult({
+		title: decision.item.title,
+		videoNames: getDecisionInternalNames(decision),
+	}, aliases)
+	const target = matchTorrentToWatchTargets(matchResult, watchTargetsState)
+	if (!target) {
+		return undefined
+	}
+	return findExistingLocalMatchByTitle(target, decision.item.title)
 }
 
 async function discoverLastDownloadedCheckpointStep(input?: BootstrapDiscoverStepBody): Promise<BootstrapDiscoveryResult> {
@@ -413,16 +437,46 @@ async function discoverLastDownloadedCheckpointStep(input?: BootstrapDiscoverSte
 			const latestDecision = processedTorrentIds.has(item.torrentId)
 				? decisionsState.findLast((decision) => decision.torrentId === item.torrentId)
 				: undefined
+			if (latestDecision) {
+				const replayLocalMatch = await findReplayLocalMatch(latestDecision, aliases)
+				if (replayLocalMatch) {
+					const upgradedFromDifferentStatus = latestDecision.status !== 'already_downloaded'
+					const replayReason = latestDecision.status === 'already_downloaded'
+						? `${replayLocalMatch.reason} (replayed from history)`
+						: `${replayLocalMatch.reason} (replayed from history; previous status: ${latestDecision.status})`
+					alreadyDownloaded.push(buildBootstrapSummary(
+						latestDecision.item,
+						'already_downloaded',
+						replayReason,
+						itemIndex,
+						undefined,
+						undefined,
+						upgradedFromDifferentStatus,
+					))
+					inspectedCount += 1
+					continue
+				}
+
+				if (latestDecision.status === 'already_downloaded') {
+					alreadyDownloaded.push(buildBootstrapSummary(
+						latestDecision.item,
+						latestDecision.status,
+						`${latestDecision.reason} (replayed from history; local file not found)`,
+						itemIndex,
+						undefined,
+						true,
+					))
+					inspectedCount += 1
+					continue
+				}
+			}
 			if (latestDecision && (qbForceResubmit || !qbittorrentSubmittedState.has(item.torrentId))) {
 				if (latestDecision && (latestDecision.status === 'auto_downloaded' || latestDecision.status === 'approved')) {
 					const existingTorrent = await findDownloadedTorrentFileById(item.torrentId)
 					if (existingTorrent) {
 						let usedMetainfoFallback = false
 						let usedFilenameFallback = false
-						let decisionInternalNames = sanitizeInternalNames((latestDecision as DecisionRecord & { internalNames?: string[] }).internalNames)
-						if (decisionInternalNames.length === 0) {
-							decisionInternalNames = sanitizeInternalNames((latestDecision.item as TorrentItem & { internalNames?: string[] }).internalNames)
-						}
+						let decisionInternalNames = getDecisionInternalNames(latestDecision)
 						if (decisionInternalNames.length === 0) {
 							const metainfo = await readFile(existingTorrent.filePath)
 								.then((buffer) => parseTorrentMetainfo(buffer))
