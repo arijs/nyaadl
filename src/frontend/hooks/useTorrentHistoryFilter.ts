@@ -13,6 +13,7 @@ export function useTorrentHistoryFilter(options: UseTorrentHistoryFilterOptions)
 	const [fromDate, setFromDate] = createSignal('')
 	const [toDate, setToDate] = createSignal('')
 	const [titleQuery, setTitleQuery] = createSignal('')
+	const [excludeTitleQuery, setExcludeTitleQuery] = createSignal('')
 	const [resolutionFilter, setResolutionFilter] = createSignal('all')
 	const [currentPage, setCurrentPage] = createSignal(1)
 	const pageSize = 10
@@ -43,16 +44,23 @@ export function useTorrentHistoryFilter(options: UseTorrentHistoryFilterOptions)
 
 	const filteredByQueryAndResolution = createMemo(() => {
 		const query = titleQuery().trim().toLowerCase()
+		const excludeQuery = excludeTitleQuery().trim().toLowerCase()
 		const selectedResolution = resolutionFilter()
 		return dateFilteredTorrents().filter((torrent) => {
 			if (selectedResolution !== 'all' && torrent.item.resolution !== selectedResolution) {
 				return false
 			}
-			if (!query) {
-				return true
-			}
 			const haystack = `${torrent.item.title} ${torrent.item.seriesBaseRaw}`.toLowerCase()
-			return haystack.includes(query)
+			if (!query) {
+				return !excludeQuery || !haystack.includes(excludeQuery)
+			}
+			if (!haystack.includes(query)) {
+				return false
+			}
+			if (excludeQuery && haystack.includes(excludeQuery)) {
+				return false
+			}
+			return true
 		})
 	})
 
@@ -89,6 +97,7 @@ export function useTorrentHistoryFilter(options: UseTorrentHistoryFilterOptions)
 		fromDate()
 		toDate()
 		titleQuery()
+		excludeTitleQuery()
 		resolutionFilter()
 		setCurrentPage(1)
 	})
@@ -135,6 +144,8 @@ export function useTorrentHistoryFilter(options: UseTorrentHistoryFilterOptions)
 		setToDate,
 		titleQuery,
 		setTitleQuery,
+		excludeTitleQuery,
+		setExcludeTitleQuery,
 		resolutionFilter,
 		setResolutionFilter,
 		resolutionOptions,

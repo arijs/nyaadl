@@ -56,7 +56,14 @@ export default function TorrentHistorySection(props: TorrentHistorySectionProps)
 						type="text"
 						value={props.torrentHistoryFilter.titleQuery()}
 						onInput={(event) => props.torrentHistoryFilter.setTitleQuery(event.currentTarget.value)}
-						placeholder="Filter by torrent title"
+						placeholder="Filter by torrent title (include)"
+						class="min-w-56 flex-1 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200 outline-none transition placeholder:text-slate-500 focus:border-amber-300/40"
+					/>
+					<input
+						type="text"
+						value={props.torrentHistoryFilter.excludeTitleQuery()}
+						onInput={(event) => props.torrentHistoryFilter.setExcludeTitleQuery(event.currentTarget.value)}
+						placeholder="Filter by torrent title (exclude)"
 						class="min-w-56 flex-1 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200 outline-none transition placeholder:text-slate-500 focus:border-amber-300/40"
 					/>
 					<select
