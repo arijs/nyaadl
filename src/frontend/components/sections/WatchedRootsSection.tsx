@@ -23,13 +23,6 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 	const [expandedRows, setExpandedRows] = createSignal<RowExpanded>({})
 
 	createEffect(() => {
-		props.watchTargets.targetsQuery()
-		props.watchTargets.resolutionFilter()
-		props.watchTargets.rootFilter()
-		props.watchTargets.goFirstPage()
-	})
-
-	createEffect(() => {
 		const statuses = props.status()?.data.status.watchRootStatuses
 		if (!statuses || watchedRootsCollapseInitialized()) {
 			return
