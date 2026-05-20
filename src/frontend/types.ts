@@ -1,4 +1,4 @@
-export type TorrentFilter = 'all' | 'auto_downloaded' | 'already_downloaded' | 'blocked' | 'pending' | 'approved' | 'skipped'
+export type { TorrentFilter } from '../shared/types'
 
 export type BootstrapLogFilter = 'all' | 'step' | 'action' | 'error'
 

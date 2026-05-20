@@ -1,18 +1,31 @@
 import { createEffect, createMemo, createResource, createSignal } from 'solid-js'
-import type { Accessor } from 'solid-js'
-import type { BlacklistEntry } from '../../shared/types'
+import type { BlacklistQuery, BlacklistResponse } from '../../shared/api'
 import { requestJson } from '../lib/httpClient'
 
 interface UseBlacklistManagerOptions {
 	refetch: () => unknown | Promise<unknown>
 }
 
-async function fetchBlacklist(): Promise<BlacklistEntry[]> {
-	const response = await fetch('/api/blacklist')
+async function fetchBlacklist(query: BlacklistQuery): Promise<BlacklistResponse> {
+	const searchParams = new URLSearchParams()
+	if (typeof query.page === 'number') {
+		searchParams.set('page', String(query.page))
+	}
+	if (typeof query.pageSize === 'number') {
+		searchParams.set('pageSize', String(query.pageSize))
+	}
+	if (query.query) {
+		searchParams.set('query', query.query)
+	}
+	if (query.resolutionFilter) {
+		searchParams.set('resolutionFilter', query.resolutionFilter)
+	}
+	const url = searchParams.size ? `/api/blacklist?${searchParams.toString()}` : '/api/blacklist'
+	const response = await fetch(url)
 	if (!response.ok) {
 		throw new Error(`Failed to load blacklist: ${response.status}`)
 	}
-	const body = await response.json() as { success: boolean; data: BlacklistEntry[] }
+	const body = await response.json() as { success: boolean; data: BlacklistResponse }
 	return body.data
 }
 
@@ -21,34 +34,34 @@ export function useBlacklistManager(options: UseBlacklistManagerOptions) {
 	const [resolutionFilter, setResolutionFilter] = createSignal('all')
 	const [currentPage, setCurrentPage] = createSignal(1)
 	const [deletingKey, setDeletingKey] = createSignal<string | undefined>(undefined)
+	const [displayBlacklist, setDisplayBlacklist] = createSignal<BlacklistResponse | undefined>(undefined)
 	const pageSize = 10
 
-	const [blacklist, { refetch }] = createResource(fetchBlacklist)
+	const [blacklist, { refetch }] = createResource(
+		() => ({
+			page: currentPage(),
+			pageSize,
+			query: titleQuery().trim() || undefined,
+			resolutionFilter: resolutionFilter(),
+		}),
+		fetchBlacklist,
+	)
+
+	createEffect(() => {
+		const response = blacklist()
+		if (response) {
+			setDisplayBlacklist(response)
+		}
+	})
 
 	const resolutionOptions = createMemo(() => {
-		const options = new Set<string>()
-		for (const item of blacklist() ?? []) {
-			options.add(item.resolution)
-		}
-		return ['all', ...Array.from(options).sort((a, b) => a.localeCompare(b))]
+		return displayBlacklist()?.resolutionOptions ?? ['all']
 	})
 
-	const filtered = createMemo(() => {
-		const query = titleQuery().trim().toLowerCase()
-		const resolution = resolutionFilter()
-		return (blacklist() ?? []).filter((item) => {
-			if (resolution !== 'all' && item.resolution !== resolution) {
-				return false
-			}
-			if (!query) {
-				return true
-			}
-			const haystack = `${item.seriesKey} ${item.key} ${item.resolution}`.toLowerCase()
-			return haystack.includes(query)
-		})
-	})
-
-	const totalPages = createMemo(() => Math.max(1, Math.ceil(filtered().length / pageSize)))
+	const resolutionCounts = createMemo(() => displayBlacklist()?.resolutionCounts ?? {})
+	const filtered = createMemo(() => displayBlacklist()?.items ?? [])
+	const totalPages = createMemo(() => displayBlacklist()?.totalPages ?? 1)
+	const totalItems = createMemo(() => displayBlacklist()?.totalItems ?? 0)
 
 	createEffect(() => {
 		titleQuery()
@@ -65,12 +78,6 @@ export function useBlacklistManager(options: UseBlacklistManagerOptions) {
 		if (page < 1) {
 			setCurrentPage(1)
 		}
-	})
-
-	const paginated = createMemo(() => {
-		const page = currentPage()
-		const start = (page - 1) * pageSize
-		return filtered().slice(start, start + pageSize)
 	})
 
 	async function removeItem(key: string) {
@@ -101,7 +108,6 @@ export function useBlacklistManager(options: UseBlacklistManagerOptions) {
 	}
 
 	return {
-		blacklist: blacklist as Accessor<BlacklistEntry[] | undefined>,
 		isLoading: () => blacklist.loading,
 		error: () => blacklist.error,
 		titleQuery,
@@ -109,8 +115,10 @@ export function useBlacklistManager(options: UseBlacklistManagerOptions) {
 		resolutionFilter,
 		setResolutionFilter,
 		resolutionOptions,
+		resolutionCounts,
 		filtered,
-		paginated,
+		paginated: filtered,
+		totalItems,
 		currentPage,
 		totalPages,
 		pageSize,

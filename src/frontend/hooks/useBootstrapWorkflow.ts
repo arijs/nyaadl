@@ -6,7 +6,7 @@ import { postJson, requestJson } from '../lib/httpClient'
 import type { BootstrapCursor } from '../types'
 
 interface UseBootstrapWorkflowOptions {
-	status: Accessor<StatusResponse | undefined>
+	bootstrap: Accessor<BootstrapDiscoveryResult | undefined>
 	refetch: () => unknown | Promise<unknown>
 	appendLogEntry: (entry: { timestampUtc: string; kind: 'step' | 'action' | 'error'; message: string; page?: number; itemIndex?: number }) => void
 	onBlacklistChanged?: () => unknown | Promise<unknown>
@@ -21,11 +21,11 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 	const [queueActionErrors, setQueueActionErrors] = createSignal<Record<string, string>>({})
 
 	const normalizeQuery = (value: string | undefined): string => value?.trim().replace(/\s+/g, ' ') ?? ''
-	const getActiveCustomQuery = () => normalizeQuery(options.status()?.data.status.lastBootstrapDiscovery?.customQuery)
+	const getActiveCustomQuery = () => normalizeQuery(options.bootstrap()?.customQuery)
 	const isBootstrapQuerySubmitDisabled = () => normalizeQuery(bootstrapQueryDraft()).length === 0
 
 	createEffect(() => {
-		const lastDiscovery = options.status()?.data.status.lastBootstrapDiscovery
+		const lastDiscovery = options.bootstrap()
 		if (lastDiscovery && typeof lastDiscovery.nextPage === 'number' && typeof lastDiscovery.nextItemIndex === 'number') {
 			setBootstrapCursor({
 				page: lastDiscovery.nextPage,
@@ -231,7 +231,7 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 	}
 
 	async function resolveBootstrapAction(action: 'approve' | 'blacklist' | 'skip') {
-		const actionItem = options.status()?.data.status.lastBootstrapDiscovery?.actionItem
+		const actionItem = options.bootstrap()?.actionItem
 		if (!actionItem) {
 			return
 		}
@@ -250,7 +250,7 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 		title: string
 		page?: number
 	}) {
-		const activeTorrentId = options.status()?.data.status.lastBootstrapDiscovery?.actionItem?.torrentId
+		const activeTorrentId = options.bootstrap()?.actionItem?.torrentId
 		await resolvePendingItemAction({
 			torrentId: params.torrentId,
 			action: params.action,

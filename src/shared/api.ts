@@ -1,4 +1,4 @@
-import type { AppStatus, DailyReport, PendingItem, QbittorrentFailureItem, QbittorrentRuntimeConfig, TorrentHistoryItem, WatchTarget } from './types'
+import type { AppStatus, BlacklistEntry, BootstrapDiscoveryResult, DailyReport, PendingItem, QbittorrentFailureItem, QbittorrentRuntimeConfig, TorrentFilter, TorrentHistoryItem, WatchTarget } from './types'
 
 export interface ApiEnvelope<T> {
 	success: boolean
@@ -7,14 +7,85 @@ export interface ApiEnvelope<T> {
 
 export interface StatusPayload {
 	status: AppStatus
-	watchTargets: WatchTarget[]
 	queue: PendingItem[]
 	qbittorrentConfig: QbittorrentRuntimeConfig
 	qbittorrentFailures: QbittorrentFailureItem[]
-	torrents: TorrentHistoryItem[]
 }
 
 export type StatusResponse = ApiEnvelope<StatusPayload>
+
+export interface BootstrapDiscoveryPayload {
+	result?: BootstrapDiscoveryResult
+}
+
+export type BootstrapDiscoveryResponse = ApiEnvelope<BootstrapDiscoveryPayload>
+
+export interface TorrentHistoryQuery {
+	page?: number
+	pageSize?: number
+	filter?: TorrentFilter
+	fromDate?: string
+	toDate?: string
+	titleQuery?: string
+	excludeTitleQuery?: string
+	resolutionFilter?: string
+}
+
+export interface TorrentHistoryResponse {
+	items: TorrentHistoryItem[]
+	currentPage: number
+	pageSize: number
+	totalItems: number
+	totalPages: number
+	counts: Record<TorrentFilter, number>
+	resolutionOptions: string[]
+}
+
+export type TorrentHistoryListResponse = ApiEnvelope<TorrentHistoryResponse>
+
+export interface WatchTargetRow {
+	target: WatchTarget
+	rootPath?: string
+	rootName: string
+}
+
+export interface WatchTargetQuery {
+	page?: number
+	pageSize?: number
+	query?: string
+	resolutionFilter?: string
+}
+
+export interface WatchTargetResponse {
+	items: WatchTargetRow[]
+	currentPage: number
+	pageSize: number
+	totalItems: number
+	totalPages: number
+	resolutionCounts: Record<string, number>
+	resolutionOptions: string[]
+}
+
+export type WatchTargetListResponse = ApiEnvelope<WatchTargetResponse>
+
+export interface BlacklistQuery {
+	page?: number
+	pageSize?: number
+	query?: string
+	resolutionFilter?: string
+}
+
+export interface BlacklistResponse {
+	items: BlacklistEntry[]
+	currentPage: number
+	pageSize: number
+	totalItems: number
+	totalPages: number
+	resolutionCounts: Record<string, number>
+	resolutionOptions: string[]
+}
+
+export type BlacklistListResponse = ApiEnvelope<BlacklistResponse>
 
 export type ListResponse<T> = ApiEnvelope<T>
 

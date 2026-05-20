@@ -11,8 +11,10 @@ import { useDashboardScreen } from './hooks/useDashboardScreen'
 export default function App() {
 	const {
 		status,
+		bootstrap,
 		bootstrapLog,
 		watchRoots,
+		watchTargets,
 		torrentHistoryFilter,
 		blacklistManager,
 		dashboardActions,
@@ -28,6 +30,7 @@ export default function App() {
 					<WatchedRootsSection
 						status={status}
 						watchRoots={watchRoots}
+						watchTargets={watchTargets}
 					/>
 
 					<ExecutionStateSection
@@ -38,7 +41,7 @@ export default function App() {
 				</div>
 
 				<BootstrapDiscoverySection
-					bootstrap={() => status()?.data.status.lastBootstrapDiscovery}
+					bootstrap={bootstrap}
 					bootstrapWorkflow={bootstrapWorkflow}
 					dashboardActions={dashboardActions}
 				/>

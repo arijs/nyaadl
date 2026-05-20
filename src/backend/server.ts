@@ -1,4 +1,4 @@
-import { H3, readBody } from 'h3'
+import { H3, getQuery, readBody } from 'h3'
 import { toNodeHandler } from 'h3/node'
 import { readFile } from 'node:fs/promises'
 import { advanceCheckpoint, determineScrapePages } from './services/checkpointService'
@@ -16,6 +16,9 @@ import { parseTorrentMetainfo } from './services/torrentMetainfoService'
 import { loadBlacklist, saveBlacklist, saveBootstrapDiscovery, saveDecisions, saveLastProcessed, savePending, saveQbittorrentSubmitted } from './services/stateService'
 import { buildNormalizedKey, deriveSeriesBase } from './services/normalizeService'
 import { listDecisionTorrentIds, listPendingTorrentIds } from './services/stateService'
+import { buildTorrentHistoryPage } from './services/torrentHistoryService'
+import { buildBlacklistPage, parseBlacklistEntry } from './services/blacklistService'
+import { buildWatchTargetPage } from './services/watchTargetService'
 import {
 	blacklistState,
 	bootstrapDiscoveryState,
@@ -41,7 +44,7 @@ import {
 	sanitizeInternalNames,
 	submitDownloadedTorrent,
 } from './services/decisionWorkflowService'
-import type { AppStatus, BlacklistEntry, DecisionRecord, LastProcessed, PendingItem, QbittorrentFailureItem, TorrentHistoryItem, TorrentItem, WatchTarget } from '@shared/types'
+import type { AppStatus, BlacklistEntry, DecisionRecord, LastProcessed, PendingItem, QbittorrentFailureItem, TorrentFilter, TorrentItem, WatchTarget } from '@shared/types'
 
 const serverPort = 8787
 
@@ -88,14 +91,6 @@ function hydrateDownloadedTorrents(): void {
 	}
 }
 
-function buildTorrentHistory(): TorrentHistoryItem[] {
-	return decisionsState.map((decision) => ({
-		...decision,
-		seriesKey: (decision as DecisionRecord & { seriesKey?: string }).seriesKey ?? decision.item.seriesBaseRaw.toLowerCase(),
-		internalNames: (decision as DecisionRecord & { internalNames?: string[] }).internalNames,
-	}))
-}
-
 function listFailedQbittorrentIds(): Set<string> {
 	return new Set(qbittorrentFailuresState.map((item) => item.torrentId))
 }
@@ -114,29 +109,8 @@ function buildStatus(): AppStatus {
 		lastProcessed: lastProcessedState,
 		watchRoots: watchRootsState,
 		watchRootStatuses: watchRootStatusesState,
-		lastBootstrapDiscovery: bootstrapDiscoveryState,
 	}
 }
-
-function parseBlacklistEntry(key: string): BlacklistEntry {
-	const separatorIndex = key.lastIndexOf('::')
-	if (separatorIndex < 0) {
-		return {
-			key,
-			seriesKey: key,
-			resolution: 'unknown',
-		}
-	}
-
-	const seriesKey = key.slice(0, separatorIndex).trim() || key
-	const resolution = key.slice(separatorIndex + 2).trim() || 'unknown'
-	return {
-		key,
-		seriesKey,
-		resolution,
-	}
-}
-
 
 async function approvePendingItemByIndex(pendingIndex: number): Promise<DecisionRecord> {
 	const pendingItem = pendingState[pendingIndex]!
@@ -340,11 +314,9 @@ async function main(): Promise<void> {
 			success: true,
 			data: {
 				status: buildStatus(),
-				watchTargets: watchTargetsState,
 				queue: pendingState,
 				qbittorrentConfig: getQbittorrentRuntimeConfig(),
 				qbittorrentFailures: qbittorrentFailuresState,
-				torrents: buildTorrentHistory(),
 			},
 		}
 	})
@@ -436,6 +408,8 @@ async function main(): Promise<void> {
 		return { success: true, data: { result, status: buildStatus() } }
 	})
 
+	app.get('/api/bootstrap/discover-last-downloaded', async () => ({ success: true, data: { result: bootstrapDiscoveryState } }))
+
 	app.post('/api/bootstrap/discovery/clear', async () => {
 		setBootstrapDiscoveryState(undefined)
 		await saveBootstrapDiscovery(undefined)
@@ -444,11 +418,55 @@ async function main(): Promise<void> {
 
 	app.get('/api/watchlist', () => ({ success: true, data: watchTargetsState }))
 	app.get('/api/pending', () => ({ success: true, data: pendingState }))
-	app.get('/api/torrents', () => ({ success: true, data: buildTorrentHistory() }))
-	app.get('/api/blacklist', async () => {
+	app.post('/api/watchlist/targets', async (event) => {
+		const body = await readBody<{
+			page?: number
+			pageSize?: number
+			query?: string
+			resolutionFilter?: string
+		}>(event).catch(() => undefined)
+		const page = buildWatchTargetPage(watchTargetsState, watchRootsState, {
+			page: body?.page,
+			pageSize: body?.pageSize,
+			query: body?.query,
+			resolutionFilter: body?.resolutionFilter,
+		})
+		return { success: true, data: page }
+	})
+	app.post('/api/torrents/history', async (event) => {
+		const body = await readBody<{
+			page?: number
+			pageSize?: number
+			filter?: TorrentFilter
+			fromDate?: string
+			toDate?: string
+			titleQuery?: string
+			excludeTitleQuery?: string
+			resolutionFilter?: string
+		}>(event).catch(() => undefined)
+		const page = buildTorrentHistoryPage(decisionsState, {
+			page: body?.page,
+			pageSize: body?.pageSize,
+			filter: body?.filter,
+			fromDate: body?.fromDate,
+			toDate: body?.toDate,
+			titleQuery: body?.titleQuery,
+			excludeTitleQuery: body?.excludeTitleQuery,
+			resolutionFilter: body?.resolutionFilter,
+		})
+		return { success: true, data: page }
+	})
+	app.get('/api/blacklist', async (event) => {
 		const persistedItems = await loadBlacklist()
 		blacklistState.splice(0, blacklistState.length, ...persistedItems)
-		return { success: true, data: blacklistState.map(parseBlacklistEntry) }
+		const query = getQuery(event)
+		const page = buildBlacklistPage(blacklistState, {
+			page: typeof query.page === 'string' ? Number(query.page) : undefined,
+			pageSize: typeof query.pageSize === 'string' ? Number(query.pageSize) : undefined,
+			query: typeof query.query === 'string' ? query.query : undefined,
+			resolutionFilter: typeof query.resolutionFilter === 'string' ? query.resolutionFilter : undefined,
+		})
+		return { success: true, data: page }
 	})
 
 	app.delete('/api/blacklist', async (event) => {

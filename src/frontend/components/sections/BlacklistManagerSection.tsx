@@ -13,7 +13,7 @@ export default function BlacklistManagerSection(props: BlacklistManagerSectionPr
 		<section class="rounded-3xl border border-white/10 bg-slate-950/80 p-6 shadow-lg shadow-black/20 xl:col-span-2">
 			<div class="flex items-center justify-between gap-4">
 				<div>
-					<h2 class="text-lg font-semibold text-white">Blacklist manager{collapsed() ? ` (${props.blacklistManager.filtered().length})` : ''}</h2>
+					<h2 class="text-lg font-semibold text-white">Blacklist manager{collapsed() ? ` (${props.blacklistManager.totalItems()})` : ''}</h2>
 					<Show when={!collapsed()}>
 						<p class="mt-1 text-sm text-slate-400">Search and prune series + resolution blocks before the next scrape.</p>
 					</Show>
@@ -44,7 +44,11 @@ export default function BlacklistManagerSection(props: BlacklistManagerSectionPr
 						>
 							<For each={props.blacklistManager.resolutionOptions()}>
 								{(resolution) => (
-									<option class="bg-slate-950 text-slate-100" value={resolution}>{resolution === 'all' ? 'All resolutions' : resolution}</option>
+									<option class="bg-slate-950 text-slate-100" value={resolution}>
+										{resolution === 'all'
+											? `All resolutions (${props.blacklistManager.totalItems()})`
+											: `${resolution} (${props.blacklistManager.resolutionCounts()[resolution] ?? 0})`}
+									</option>
 								)}
 							</For>
 						</select>
@@ -59,7 +63,7 @@ export default function BlacklistManagerSection(props: BlacklistManagerSectionPr
 						</Show>
 
 						<Show
-							when={!props.blacklistManager.isLoading() && !props.blacklistManager.error() && props.blacklistManager.filtered().length > 0}
+							when={!props.blacklistManager.isLoading() && !props.blacklistManager.error() && props.blacklistManager.totalItems() > 0}
 							fallback={<Show when={!props.blacklistManager.isLoading() && !props.blacklistManager.error()}><EmptyState title="Blacklist is empty" description="Blacklist entries from pending reviews will appear here." /></Show>}
 						>
 							<For each={props.blacklistManager.paginated()}>
@@ -93,7 +97,7 @@ export default function BlacklistManagerSection(props: BlacklistManagerSectionPr
 
 							<div class="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300">
 								<p>
-									Page {props.blacklistManager.currentPage()} of {props.blacklistManager.totalPages()} · showing {props.blacklistManager.paginated().length} of {props.blacklistManager.filtered().length}
+									Page {props.blacklistManager.currentPage()} of {props.blacklistManager.totalPages()} · showing {props.blacklistManager.paginated().length} of {props.blacklistManager.totalItems()}
 								</p>
 								<div class="flex flex-wrap gap-2">
 									<button

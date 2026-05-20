@@ -1,3 +1,5 @@
+export type TorrentFilter = 'all' | 'auto_downloaded' | 'already_downloaded' | 'blocked' | 'pending' | 'approved' | 'skipped'
+
 export type DecisionStatus = 'auto_downloaded' | 'already_downloaded' | 'blocked' | 'pending' | 'approved' | 'skipped'
 
 export type QbittorrentFailureKind = 'auth' | 'timeout' | 'unreachable' | 'http'
@@ -94,7 +96,6 @@ export interface AppStatus {
 	lastProcessed?: LastProcessed
 	watchRoots: string[]
 	watchRootStatuses?: WatchRootStatus[]
-	lastBootstrapDiscovery?: BootstrapDiscoveryResult
 }
 
 export interface QbittorrentRuntimeConfig {

@@ -36,7 +36,7 @@ export default function TorrentHistorySection(props: TorrentHistorySectionProps)
 		<section class="rounded-3xl border border-white/10 bg-slate-950/80 p-6 shadow-lg shadow-black/20 xl:col-span-2">
 			<div class="flex items-center justify-between gap-4">
 				<div>
-					<h2 class="text-lg font-semibold text-white">Torrent history{collapsed() ? ` (${props.torrentHistoryFilter.filteredTorrents().length})` : ''}</h2>
+					<h2 class="text-lg font-semibold text-white">Torrent history{collapsed() ? ` (${props.torrentHistoryFilter.totalItems()})` : ''}</h2>
 					<Show when={!collapsed()}>
 						<p class="mt-1 text-sm text-slate-400">All decisions with the latest metadata, filterable by status.</p>
 					</Show>
@@ -104,19 +104,19 @@ export default function TorrentHistorySection(props: TorrentHistorySectionProps)
 					</div>
 				</div>
 			<div class="grid gap-3">
-				<Show when={props.torrentHistoryFilter.filteredTorrents().length} fallback={<EmptyState title="No torrent history yet" description="Approved, matched, already downloaded, blocked, and pending items will appear here after a run." />}>
+				<Show when={props.torrentHistoryFilter.totalItems()} fallback={<EmptyState title="No torrent history yet" description="Approved, matched, already downloaded, blocked, and pending items will appear here after a run." />}>
 					<For each={props.torrentHistoryFilter.paginatedTorrents()}>
 						{(torrent) => (
 							<div class="max-w-full rounded-2xl border border-white/10 bg-white/5 p-4">
 								<div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
 									<div class="min-w-0 max-w-full space-y-1">
 										<div class="flex flex-wrap items-center gap-2">
-											<p class="break-words text-wrap font-medium text-white">{torrent.item.title}</p>
+												<p class="wrap-break-word text-wrap font-medium text-white">{torrent.item.title}</p>
 											<span class={statusTagClass(torrent.status)}>{torrent.status}</span>
 										</div>
-										<p class="break-words text-xs text-slate-400">{torrent.item.seriesBaseRaw} · {torrent.item.resolution} · page {torrent.item.page}</p>
-										<p class="break-words text-xs text-slate-400">{torrent.reason}</p>
-										<p class="break-words text-xs text-slate-400">
+												<p class="wrap-break-word text-xs text-slate-400">{torrent.item.seriesBaseRaw} · {torrent.item.resolution} · page {torrent.item.page}</p>
+												<p class="wrap-break-word text-xs text-slate-400">{torrent.reason}</p>
+												<p class="wrap-break-word text-xs text-slate-400">
 											{torrent.item.publishedAtUtc ?? 'n/a'} · seeders {torrent.item.seeders ?? 'n/a'} · leechers {torrent.item.leechers ?? 'n/a'} · downloads {torrent.item.downloads ?? 'n/a'}
 										</p>
 									</div>
@@ -127,7 +127,7 @@ export default function TorrentHistorySection(props: TorrentHistorySectionProps)
 					</For>
 					<div class="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300">
 						<p>
-							Page {props.torrentHistoryFilter.currentPage()} of {props.torrentHistoryFilter.totalPages()} · showing {props.torrentHistoryFilter.paginatedTorrents().length} of {props.torrentHistoryFilter.filteredTorrents().length}
+							Page {props.torrentHistoryFilter.currentPage()} of {props.torrentHistoryFilter.totalPages()} · showing {props.torrentHistoryFilter.paginatedTorrents().length} of {props.torrentHistoryFilter.totalItems()}
 						</p>
 						<div class="flex flex-wrap gap-2">
 							<button

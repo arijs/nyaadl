@@ -1,14 +1,24 @@
-import { createMemo, createSignal } from 'solid-js'
-import { createEffect } from 'solid-js'
-import type { Accessor } from 'solid-js'
-import type { StatusResponse } from '../../shared/api'
+import { createEffect, createMemo, createResource, createSignal } from 'solid-js'
+import type { TorrentHistoryQuery, TorrentHistoryResponse } from '../../shared/api'
+import { postJsonBody } from '../lib/httpClient'
 import type { TorrentFilter } from '../types'
 
-interface UseTorrentHistoryFilterOptions {
-	status: Accessor<StatusResponse | undefined>
+const emptyCounts: Record<TorrentFilter, number> = {
+	all: 0,
+	auto_downloaded: 0,
+	already_downloaded: 0,
+	blocked: 0,
+	pending: 0,
+	approved: 0,
+	skipped: 0,
 }
 
-export function useTorrentHistoryFilter(options: UseTorrentHistoryFilterOptions) {
+async function fetchTorrentHistory(query: TorrentHistoryQuery): Promise<TorrentHistoryResponse> {
+	const response = await postJsonBody<TorrentHistoryResponse>('/api/torrents/history', query)
+	return response.data
+}
+
+export function useTorrentHistoryFilter() {
 	const [filter, setFilter] = createSignal<TorrentFilter>('all')
 	const [fromDate, setFromDate] = createSignal('')
 	const [toDate, setToDate] = createSignal('')
@@ -18,79 +28,33 @@ export function useTorrentHistoryFilter(options: UseTorrentHistoryFilterOptions)
 	const [currentPage, setCurrentPage] = createSignal(1)
 	const pageSize = 10
 
-	const dateFilteredTorrents = createMemo(() => {
-		const torrents = options.status()?.data.torrents ?? []
-		const from = fromDate()
-		const to = toDate()
-		return torrents.filter((torrent) => {
-			const createdAt = torrent.createdAtUtc.slice(0, 10)
-			if (from && createdAt < from) {
-				return false
-			}
-			if (to && createdAt > to) {
-				return false
-			}
-			return true
-		})
-	})
+	const [history, { refetch }] = createResource(
+		() => ({
+			page: currentPage(),
+			pageSize,
+			filter: filter(),
+			fromDate: fromDate().trim() || undefined,
+			toDate: toDate().trim() || undefined,
+			titleQuery: titleQuery().trim() || undefined,
+			excludeTitleQuery: excludeTitleQuery().trim() || undefined,
+			resolutionFilter: resolutionFilter(),
+		}),
+		fetchTorrentHistory,
+	)
 
 	const resolutionOptions = createMemo(() => {
-		const options = new Set<string>()
-		for (const torrent of dateFilteredTorrents()) {
-			options.add(torrent.item.resolution)
-		}
-		return ['all', ...Array.from(options).sort((a, b) => a.localeCompare(b))]
-	})
-
-	const filteredByQueryAndResolution = createMemo(() => {
-		const query = titleQuery().trim().toLowerCase()
-		const excludeQuery = excludeTitleQuery().trim().toLowerCase()
-		const selectedResolution = resolutionFilter()
-		return dateFilteredTorrents().filter((torrent) => {
-			if (selectedResolution !== 'all' && torrent.item.resolution !== selectedResolution) {
-				return false
-			}
-			const haystack = `${torrent.item.title} ${torrent.item.seriesBaseRaw}`.toLowerCase()
-			if (!query) {
-				return !excludeQuery || !haystack.includes(excludeQuery)
-			}
-			if (!haystack.includes(query)) {
-				return false
-			}
-			if (excludeQuery && haystack.includes(excludeQuery)) {
-				return false
-			}
-			return true
-		})
+		return history()?.resolutionOptions ?? ['all']
 	})
 
 	const filterCounts = createMemo<Record<TorrentFilter, number>>(() => {
-		const base = {
-			all: 0,
-			auto_downloaded: 0,
-			already_downloaded: 0,
-			blocked: 0,
-			pending: 0,
-			approved: 0,
-			skipped: 0,
-		} satisfies Record<TorrentFilter, number>
-		for (const torrent of filteredByQueryAndResolution()) {
-			base.all += 1
-			base[torrent.status] += 1
-		}
-		return base
+		return history()?.counts ?? emptyCounts
 	})
 
-	const filteredTorrents = createMemo(() => {
-		const current = filter()
-		const torrents = filteredByQueryAndResolution()
-		if (current === 'all') {
-			return torrents
-		}
-		return torrents.filter((torrent) => torrent.status === current)
-	})
+	const totalItems = createMemo(() => history()?.totalItems ?? 0)
 
-	const totalPages = createMemo(() => Math.max(1, Math.ceil(filteredTorrents().length / pageSize)))
+	const paginatedTorrents = createMemo(() => history()?.items ?? [])
+
+	const totalPages = createMemo(() => history()?.totalPages ?? 1)
 
 	createEffect(() => {
 		filter()
@@ -113,10 +77,14 @@ export function useTorrentHistoryFilter(options: UseTorrentHistoryFilterOptions)
 		}
 	})
 
-	const paginatedTorrents = createMemo(() => {
-		const page = currentPage()
-		const start = (page - 1) * pageSize
-		return filteredTorrents().slice(start, start + pageSize)
+	createEffect(() => {
+		const response = history()
+		if (!response) {
+			return
+		}
+		if (response.currentPage !== currentPage()) {
+			setCurrentPage(response.currentPage)
+		}
 	})
 
 	function goFirstPage() {
@@ -150,11 +118,12 @@ export function useTorrentHistoryFilter(options: UseTorrentHistoryFilterOptions)
 		setResolutionFilter,
 		resolutionOptions,
 		filterCounts,
-		filteredTorrents,
+		totalItems,
 		paginatedTorrents,
 		currentPage,
 		totalPages,
 		pageSize,
+		refetch,
 		goFirstPage,
 		goPreviousPage,
 		goNextPage,

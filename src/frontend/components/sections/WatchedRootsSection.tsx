@@ -1,85 +1,26 @@
-import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
+import { createEffect, createSignal, For, Show } from 'solid-js'
 import type { Accessor } from 'solid-js'
 import type { StatusResponse } from '../../../shared/api'
 import type { useWatchRoots } from '../../hooks/useWatchRoots'
+import type { useWatchTargets } from '../../hooks/useWatchTargets'
 import ActionButton from '../ui/ActionButton'
 import EmptyState from '../ui/EmptyState'
 
 interface WatchedRootsSectionProps {
 	status: Accessor<StatusResponse | undefined>
 	watchRoots: ReturnType<typeof useWatchRoots>
+	watchTargets: ReturnType<typeof useWatchTargets>
 }
 
-const WATCH_TARGETS_PAGE_SIZE = 10
-
 export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
-	const [targetsQuery, setTargetsQuery] = createSignal('')
-	const [resolutionFilter, setResolutionFilter] = createSignal('all')
-	const [targetsPage, setTargetsPage] = createSignal(1)
 	const [watchedRootsCollapsed, setWatchedRootsCollapsed] = createSignal(true)
 	const [watchedRootsCollapseInitialized, setWatchedRootsCollapseInitialized] = createSignal(false)
 	const [watchTargetsCollapsed, setWatchTargetsCollapsed] = createSignal(true)
 
-	const resolutionOptions = createMemo(() => {
-		const options = new Set<string>()
-		for (const target of props.status()?.data.watchTargets ?? []) {
-			options.add(target.resolution)
-		}
-		return ['all', ...Array.from(options).sort((a, b) => a.localeCompare(b))]
-	})
-
-	const watchTargetRows = createMemo(() => {
-		const watchRoots = props.status()?.data.status.watchRoots ?? []
-		return (props.status()?.data.watchTargets ?? []).map((target) => {
-			const matchingRoot = watchRoots
-				.filter((rootPath) => target.folderPath.toLowerCase().startsWith(rootPath.toLowerCase()))
-				.sort((left, right) => right.length - left.length)[0]
-			const rootName = matchingRoot
-				? matchingRoot.split(/[\\/]/).filter(Boolean).pop() ?? matchingRoot
-				: 'Unknown root'
-			return {
-				target,
-				rootPath: matchingRoot,
-				rootName,
-			}
-		})
-	})
-
-	const filteredWatchTargetRows = createMemo(() => {
-		const query = targetsQuery().trim().toLowerCase()
-		const selectedResolution = resolutionFilter()
-		return watchTargetRows().filter((row) => {
-			if (selectedResolution !== 'all' && row.target.resolution !== selectedResolution) {
-				return false
-			}
-			if (!query) {
-				return true
-			}
-			const haystack = `${row.target.folderName} ${row.target.normalizedKey} ${row.rootName}`.toLowerCase()
-			return haystack.includes(query)
-		})
-	})
-
-	const totalTargetsPages = createMemo(() => Math.max(1, Math.ceil(filteredWatchTargetRows().length / WATCH_TARGETS_PAGE_SIZE)))
-
-	const paginatedWatchTargetRows = createMemo(() => {
-		const start = (targetsPage() - 1) * WATCH_TARGETS_PAGE_SIZE
-		const end = start + WATCH_TARGETS_PAGE_SIZE
-		return filteredWatchTargetRows().slice(start, end)
-	})
-
 	createEffect(() => {
-		targetsQuery()
-		resolutionFilter()
-		setTargetsPage(1)
-	})
-
-	createEffect(() => {
-		const currentPage = targetsPage()
-		const maxPage = totalTargetsPages()
-		if (currentPage > maxPage) {
-			setTargetsPage(maxPage)
-		}
+		props.watchTargets.targetsQuery()
+		props.watchTargets.resolutionFilter()
+		props.watchTargets.goFirstPage()
 	})
 
 	createEffect(() => {
@@ -161,7 +102,7 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 				<div class="border-t border-white/10 pt-4">
 					<div class="flex items-center justify-between gap-3">
 						<h3 class="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
-							Watch targets{watchTargetsCollapsed() ? ` (${watchTargetRows().length})` : ''}
+							Watch targets{watchTargetsCollapsed() ? ` (${props.watchTargets.totalItems()})` : ''}
 						</h3>
 						<button
 							type="button"
@@ -179,29 +120,33 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 				<div class="flex flex-col gap-3 sm:flex-row">
 					<input
 						type="text"
-						value={targetsQuery()}
-						onInput={(event) => setTargetsQuery(event.currentTarget.value)}
+						value={props.watchTargets.targetsQuery()}
+						onInput={(event) => props.watchTargets.setTargetsQuery(event.currentTarget.value)}
 						placeholder="Filter by folder, key or root"
 						class="flex-1 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-amber-300/40"
 					/>
 					<select
-						value={resolutionFilter()}
-						onChange={(event) => setResolutionFilter(event.currentTarget.value)}
+						value={props.watchTargets.resolutionFilter()}
+						onChange={(event) => props.watchTargets.setResolutionFilter(event.currentTarget.value)}
 						class="appearance-none rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-amber-300/40"
 					>
-						<For each={resolutionOptions()}>
+						<For each={props.watchTargets.resolutionOptions()}>
 							{(resolution) => (
-								<option class="bg-slate-950 text-slate-100" value={resolution}>{resolution === 'all' ? 'All resolutions' : resolution}</option>
+								<option class="bg-slate-950 text-slate-100" value={resolution}>
+									{resolution === 'all'
+										? `All resolutions (${props.watchTargets.totalItems()})`
+										: `${resolution} (${props.watchTargets.resolutionCounts()[resolution] ?? 0})`}
+								</option>
 							)}
 						</For>
 					</select>
 				</div>
 				<div class="flex items-center justify-between gap-3 text-xs text-slate-400">
-					<p>Showing {paginatedWatchTargetRows().length} of {filteredWatchTargetRows().length} filtered · total {watchTargetRows().length}</p>
-					<p>Page {targetsPage()} of {totalTargetsPages()}</p>
+					<p>Showing {props.watchTargets.paginatedWatchTargetRows().length} of {props.watchTargets.totalItems()} filtered</p>
+					<p>Page {props.watchTargets.targetsPage()} of {props.watchTargets.totalPages()}</p>
 				</div>
-				<Show when={filteredWatchTargetRows().length} fallback={<EmptyState title="No watch targets match the current filters" description="Try clearing the search or selecting another resolution." />}>
-					<For each={paginatedWatchTargetRows()}>
+				<Show when={props.watchTargets.totalItems()} fallback={<EmptyState title="No watch targets match the current filters" description="Try clearing the search or selecting another resolution." />}>
+					<For each={props.watchTargets.paginatedWatchTargetRows()}>
 						{(row) => (
 							<div class="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
 								<div class="flex items-center justify-between gap-4">
@@ -218,8 +163,8 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 						)}
 					</For>
 					<div class="mt-2 flex flex-wrap justify-end gap-2">
-						<ActionButton label="Previous" onClick={() => { setTargetsPage((current) => Math.max(1, current - 1)) }} compact disabled={targetsPage() <= 1} />
-						<ActionButton label="Next" onClick={() => { setTargetsPage((current) => Math.min(totalTargetsPages(), current + 1)) }} compact disabled={targetsPage() >= totalTargetsPages()} />
+						<ActionButton label="Previous" onClick={props.watchTargets.goPreviousPage} compact disabled={props.watchTargets.targetsPage() <= 1} />
+						<ActionButton label="Next" onClick={props.watchTargets.goNextPage} compact disabled={props.watchTargets.targetsPage() >= props.watchTargets.totalPages()} />
 					</div>
 				</Show>
 				</Show>
