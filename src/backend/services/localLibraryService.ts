@@ -136,6 +136,16 @@ export interface FingerprintComboBreakdown {
 	count: number
 	minEpisode?: string
 	maxEpisode?: string
+	missingEpisodes?: string[]
+}
+
+function extractEpisodeNumber(value: string): number | undefined {
+	const match = /^(\d{1,4})/.exec(value)
+	if (!match) {
+		return undefined
+	}
+	const parsed = Number.parseInt(match[1]!, 10)
+	return Number.isNaN(parsed) ? undefined : parsed
 }
 
 export async function analyzeFingerprintCombos(target: WatchTarget): Promise<FingerprintComboBreakdown[]> {
@@ -174,18 +184,28 @@ export async function analyzeFingerprintCombos(target: WatchTarget): Promise<Fin
 	}
 
 	return Array.from(comboMap.values()).map((item) => {
-		const sorted = Array.from(item.episodes)
-			.map((ep) => parseInt(ep, 10))
-			.filter((n) => !isNaN(n))
-			.sort((a, b) => a - b)
+		const numericEpisodes = Array.from(new Set(
+			Array.from(item.episodes)
+				.map((episode) => extractEpisodeNumber(episode))
+				.filter((episode): episode is number => typeof episode === 'number'),
+		)).sort((left, right) => left - right)
+
+		const minEpisode = numericEpisodes.length > 0 ? numericEpisodes[0]?.toString() : undefined
+		const maxEpisode = numericEpisodes.length > 0 ? numericEpisodes[numericEpisodes.length - 1]?.toString() : undefined
+		const missingEpisodes = numericEpisodes.length > 0
+			? Array.from({ length: (numericEpisodes[numericEpisodes.length - 1]! - numericEpisodes[0]!) + 1 }, (_, index) => numericEpisodes[0]! + index)
+				.filter((episodeNumber) => !numericEpisodes.includes(episodeNumber))
+				.map((episodeNumber) => episodeNumber.toString())
+			: []
 
 		return {
 			source: item.fingerprint.source,
 			episodeTag: item.fingerprint.episodeTag,
 			isMultisub: item.fingerprint.isMultisub,
 			count: item.episodes.size,
-			minEpisode: sorted.length > 0 ? sorted[0]?.toString() : undefined,
-			maxEpisode: sorted.length > 0 ? sorted[sorted.length - 1]?.toString() : undefined,
+			minEpisode,
+			maxEpisode,
+			missingEpisodes: missingEpisodes.length > 0 ? missingEpisodes : undefined,
 		}
 	})
 }

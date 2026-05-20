@@ -192,26 +192,38 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 											</div>
 											<p class="hidden mt-1 text-xs text-slate-400">{row.target.normalizedKey}</p>
 											<Show when={(row.fingerprintCombos?.length ?? 0) === 1}>
-												<p class="mt-1 text-xs text-slate-300">
-													<span class="text-slate-500">{row.rootName}</span>
-													<span class="text-slate-400">{' / '}</span>
-													<Show when={row.fingerprintCombos?.[0]}>
-														{(combo) => (
-															<span class="text-slate-300">
-																{combo().source ?? 'no-source'} {combo().episodeTag ? `/ ${combo().episodeTag}` : ''} / {combo().isMultisub ? 'multisub' : 'mono'} · {combo().count} ep{combo().count !== 1 ? 's' : ''} {combo().minEpisode && combo().maxEpisode ? `(${combo().minEpisode}–${combo().maxEpisode})` : ''}
-															</span>
+												<div class="mt-1 space-y-1 text-xs text-slate-300">
+													<p>
+														<span class="text-slate-500">{row.rootName}</span>
+														<span class="text-slate-400">{' / '}</span>
+														<Show when={row.fingerprintCombos?.[0]}>
+															{(combo) => (
+																<span class="text-slate-300">
+																	{combo().source ?? 'no-source'} {combo().episodeTag ? `/ ${combo().episodeTag}` : ''} / {combo().isMultisub ? 'multisub' : 'mono'} · {combo().count} ep{combo().count !== 1 ? 's' : ''} {combo().minEpisode && combo().maxEpisode ? `(${combo().minEpisode}–${combo().maxEpisode})` : ''}
+																</span>
+															)}
+														</Show>
+													</p>
+													<Show when={row.fingerprintCombos?.[0]?.missingEpisodes?.length ?? 0}>
+														{(missingCount) => (
+															<div class="flex items-center gap-2 text-rose-300">
+																<span class="inline-flex h-4 w-4 items-center justify-center rounded-full border border-rose-400/50 bg-rose-400/15 text-[10px] font-bold leading-none text-rose-100">!</span>
+																<span>
+																	Missing ep {row.fingerprintCombos?.[0]?.missingEpisodes?.join(', ')}.
+																</span>
+															</div>
 														)}
 													</Show>
-												</p>
+												</div>
 											</Show>
 											<Show when={(row.fingerprintCombos?.length ?? 0) !== 1}>
-												<p class="mt-1 text-xs">
+												<div class="mt-1 space-y-1 text-xs">
 													<span class="text-slate-500">{row.rootName}</span>
 													<span class="text-slate-400">{' / '}{row.matchingFilesCount ?? 0} files</span>
 													<Show when={(row.fingerprintCombos?.length ?? 0) > 1}>
 														<span class="text-slate-400">{' · '}{row.fingerprintCombos?.length ?? 0} combos</span>
 													</Show>
-												</p>
+												</div>
 											</Show>
 											<Show when={isExpanded() && (row.fingerprintCombos?.length ?? 0) > 1}>
 												<div class="mt-3 space-y-2">
@@ -224,6 +236,12 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 																<div class="text-slate-400">
 																	{combo.count} episode{combo.count !== 1 ? 's' : ''} {combo.minEpisode && combo.maxEpisode ? `(${combo.minEpisode}–${combo.maxEpisode})` : ''}
 																</div>
+																<Show when={(combo.missingEpisodes?.length ?? 0) > 0}>
+																	<div class="mt-1 flex items-center gap-2 text-rose-300">
+																		<span class="inline-flex h-4 w-4 items-center justify-center rounded-full border border-rose-400/50 bg-rose-400/15 text-[10px] font-bold leading-none text-rose-100">!</span>
+																		<span>Missing ep {combo.missingEpisodes?.join(', ')}.</span>
+																	</div>
+																</Show>
 															</div>
 														)}
 													</For>

@@ -145,6 +145,40 @@ test('countMatchingLocalFiles matches abbreviated local filenames through watch 
 	}
 })
 
+test('analyzeFingerprintCombos reports missing episode numbers for a gap in the range', async () => {
+	const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'nyaadl-jingai-'))
+	const folderName = '[Erai-raws] Jingai Kyoushitsu no Ningengirai Kyoushi [480p]'
+	const targetFolder = path.join(tempRoot, folderName)
+	const seriesKey = 'jingai kyoushitsu no ningengirai kyoushi'
+
+	try {
+		await mkdir(targetFolder, { recursive: true })
+
+		for (const episode of ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '13']) {
+			const fileName = `[Erai-raws] Jingai Kyoushitsu no Ningengirai Kyoushi - ${episode} [480p CR WEB-DL AVC AAC][MultiSub][FD972D85].mkv`
+			await writeFile(path.join(targetFolder, fileName), '')
+		}
+
+		const watchTarget: WatchTarget = {
+			folderName,
+			folderPath: targetFolder,
+			seriesKey,
+			resolution: '480p',
+			normalizedKey: `${seriesKey}::480p`,
+			matchCandidates: buildWatchTargetMatchCandidates(folderName, seriesKey, seriesKey, {}),
+		}
+
+		const combos = await analyzeFingerprintCombos(watchTarget)
+		assert.equal(combos.length, 1)
+		assert.equal(combos[0]?.count, 12)
+		assert.deepEqual(combos[0]?.missingEpisodes, ['12'])
+		assert.equal(combos[0]?.minEpisode, '1')
+		assert.equal(combos[0]?.maxEpisode, '13')
+	} finally {
+		await rm(tempRoot, { recursive: true, force: true })
+	}
+})
+
 test('countMatchingLocalFiles treats internal title hyphens as a post-processed fallback candidate', async () => {
 	const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'nyaadl-fate-strange-fake-'))
 	const folderName = '[Erai-raws] Fate-Strange Fake [480p]'

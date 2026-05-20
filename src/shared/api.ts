@@ -50,6 +50,7 @@ export interface FingerprintComboBreakdown {
 	count: number
 	minEpisode?: string
 	maxEpisode?: string
+	missingEpisodes?: string[]
 }
 
 export interface WatchTargetRow {
