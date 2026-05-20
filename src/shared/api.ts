@@ -54,6 +54,7 @@ export interface WatchTargetQuery {
 	pageSize?: number
 	query?: string
 	resolutionFilter?: string
+	rootFilter?: string
 }
 
 export interface WatchTargetResponse {
@@ -64,6 +65,8 @@ export interface WatchTargetResponse {
 	totalPages: number
 	resolutionCounts: Record<string, number>
 	resolutionOptions: string[]
+	rootCounts: Record<string, number>
+	rootOptions: string[]
 }
 
 export type WatchTargetListResponse = ApiEnvelope<WatchTargetResponse>

@@ -7,6 +7,7 @@ export interface WatchTargetQuery {
 	pageSize?: number
 	query?: string
 	resolutionFilter?: string
+	rootFilter?: string
 }
 
 export interface WatchTargetRow {
@@ -41,6 +42,7 @@ function toRow(target: WatchTarget, roots: string[]): WatchTargetRow {
 export function buildWatchTargetPage(targets: WatchTarget[], roots: string[], query: WatchTargetQuery = {}): WatchTargetPage {
 	const pageSize = Math.max(1, Math.floor(query.pageSize ?? 10))
 	const selectedResolution = query.resolutionFilter?.trim() ?? 'all'
+	const selectedRoot = query.rootFilter?.trim() ?? 'all'
 	const searchQuery = normalizeQuery(query.query)
 	const rows = targets.map((target) => toRow(target, roots))
 	const searchFiltered = rows.filter((row) => {
@@ -50,15 +52,23 @@ export function buildWatchTargetPage(targets: WatchTarget[], roots: string[], qu
 		const haystack = `${row.target.folderName} ${row.target.normalizedKey} ${row.rootName}`.toLowerCase()
 		return haystack.includes(searchQuery)
 	})
-	const filtered = selectedResolution === 'all'
+	const rootFiltered = selectedRoot === 'all'
 		? searchFiltered
-		: searchFiltered.filter((row) => row.target.resolution === selectedResolution)
+		: searchFiltered.filter((row) => row.rootName === selectedRoot)
+	const filtered = selectedResolution === 'all'
+		? rootFiltered
+		: rootFiltered.filter((row) => row.target.resolution === selectedResolution)
 
-	const resolutionCounts = searchFiltered.reduce<Record<string, number>>((acc, row) => {
+	const rootCounts = searchFiltered.reduce<Record<string, number>>((acc, row) => {
+		acc[row.rootName] = (acc[row.rootName] ?? 0) + 1
+		return acc
+	}, {})
+	const rootOptions = ['all', ...Array.from(new Set(searchFiltered.map((row) => row.rootName))).sort((left, right) => left.localeCompare(right))]
+	const resolutionCounts = rootFiltered.reduce<Record<string, number>>((acc, row) => {
 		acc[row.target.resolution] = (acc[row.target.resolution] ?? 0) + 1
 		return acc
 	}, {})
-	const resolutionOptions = ['all', ...Array.from(new Set(searchFiltered.map((row) => row.target.resolution))).sort((left, right) => left.localeCompare(right))]
+	const resolutionOptions = ['all', ...Array.from(new Set(rootFiltered.map((row) => row.target.resolution))).sort((left, right) => left.localeCompare(right))]
 	const totalItems = filtered.length
 	const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
 	const currentPage = Math.min(Math.max(1, Math.floor(query.page ?? 1)), totalPages)
@@ -72,5 +82,7 @@ export function buildWatchTargetPage(targets: WatchTarget[], roots: string[], qu
 		totalPages,
 		resolutionCounts,
 		resolutionOptions,
+		rootCounts,
+		rootOptions,
 	}
 }

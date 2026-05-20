@@ -20,6 +20,7 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 	createEffect(() => {
 		props.watchTargets.targetsQuery()
 		props.watchTargets.resolutionFilter()
+		props.watchTargets.rootFilter()
 		props.watchTargets.goFirstPage()
 	})
 
@@ -124,29 +125,46 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 					</Show>
 				</div>
 				<Show when={!watchTargetsCollapsed()}>
-				<div class="flex flex-col gap-3 sm:flex-row">
+				<div class="flex flex-col gap-2">
 					<input
 						type="text"
 						value={props.watchTargets.targetsQuery()}
 						onInput={(event) => props.watchTargets.setTargetsQuery(event.currentTarget.value)}
 						placeholder="Filter by folder, key or root"
-						class="flex-1 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-amber-300/40"
+						class="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-amber-300/40"
 					/>
-					<select
-						value={props.watchTargets.resolutionFilter()}
-						onChange={(event) => props.watchTargets.setResolutionFilter(event.currentTarget.value)}
-						class="appearance-none rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-amber-300/40"
-					>
-						<For each={props.watchTargets.resolutionOptions()}>
-							{(resolution) => (
-								<option class="bg-slate-950 text-slate-100" value={resolution}>
-									{resolution === 'all'
-										? `All resolutions (${props.watchTargets.totalItems()})`
-										: `${resolution} (${props.watchTargets.resolutionCounts()[resolution] ?? 0})`}
-								</option>
-							)}
-						</For>
-					</select>
+					<div class="flex flex-col gap-2 sm:flex-row">
+						<select
+							value={props.watchTargets.rootFilter()}
+							onChange={(event) => props.watchTargets.setRootFilter(event.currentTarget.value)}
+							class="flex-1 appearance-none rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-amber-300/40"
+						>
+							<For each={props.watchTargets.rootOptions()}>
+								{(root) => (
+									<option class="bg-slate-950 text-slate-100" value={root}>
+										{root === 'all'
+											? `All roots (${props.watchTargets.totalItems()})`
+											: `${root} (${props.watchTargets.rootCounts()[root] ?? 0})`}
+									</option>
+								)}
+							</For>
+						</select>
+						<select
+							value={props.watchTargets.resolutionFilter()}
+							onChange={(event) => props.watchTargets.setResolutionFilter(event.currentTarget.value)}
+							class="flex-1 appearance-none rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-amber-300/40"
+						>
+							<For each={props.watchTargets.resolutionOptions()}>
+								{(resolution) => (
+									<option class="bg-slate-950 text-slate-100" value={resolution}>
+										{resolution === 'all'
+											? `All resolutions (${props.watchTargets.totalItems()})`
+											: `${resolution} (${props.watchTargets.resolutionCounts()[resolution] ?? 0})`}
+									</option>
+								)}
+							</For>
+						</select>
+					</div>
 				</div>
 				<div class="flex items-center justify-between gap-3 text-xs text-slate-400">
 					<p>Showing {props.watchTargets.paginatedWatchTargetRows().length} of {props.watchTargets.totalItems()} filtered</p>

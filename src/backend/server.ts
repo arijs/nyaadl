@@ -433,12 +433,14 @@ async function main(): Promise<void> {
 			pageSize?: number
 			query?: string
 			resolutionFilter?: string
+			rootFilter?: string
 		}>(event).catch(() => undefined)
 		const page = buildWatchTargetPage(watchTargetsState, watchRootsState, {
 			page: body?.page,
 			pageSize: body?.pageSize,
 			query: body?.query,
 			resolutionFilter: body?.resolutionFilter,
+			rootFilter: body?.rootFilter,
 		})
 		return { success: true, data: page }
 	})

@@ -10,6 +10,7 @@ async function fetchWatchTargets(query: WatchTargetQuery): Promise<WatchTargetRe
 export function useWatchTargets() {
 	const [targetsQuery, setTargetsQuery] = createSignal('')
 	const [resolutionFilter, setResolutionFilter] = createSignal('all')
+	const [rootFilter, setRootFilter] = createSignal('all')
 	const [targetsPage, setTargetsPage] = createSignal(1)
 	const pageSize = 10
 
@@ -19,6 +20,7 @@ export function useWatchTargets() {
 			pageSize,
 			query: targetsQuery().trim() || undefined,
 			resolutionFilter: resolutionFilter(),
+			rootFilter: rootFilter(),
 		}),
 		fetchWatchTargets,
 	)
@@ -28,10 +30,13 @@ export function useWatchTargets() {
 	const totalPages = createMemo(() => targets()?.totalPages ?? 1)
 	const paginatedWatchTargetRows = createMemo(() => targets()?.items ?? [])
 	const resolutionCounts = createMemo(() => targets()?.resolutionCounts ?? {})
+	const rootOptions = createMemo(() => targets()?.rootOptions ?? ['all'])
+	const rootCounts = createMemo(() => targets()?.rootCounts ?? {})
 
 	createEffect(() => {
 		targetsQuery()
 		resolutionFilter()
+		rootFilter()
 		setTargetsPage(1)
 	})
 
@@ -77,8 +82,12 @@ export function useWatchTargets() {
 		setTargetsQuery,
 		resolutionFilter,
 		setResolutionFilter,
+		rootFilter,
+		setRootFilter,
 		resolutionOptions,
 		resolutionCounts,
+		rootOptions,
+		rootCounts,
 		totalItems,
 		paginatedWatchTargetRows,
 		targetsPage,
