@@ -51,16 +51,6 @@ export function useWatchTargets() {
 		}
 	})
 
-	createEffect(() => {
-		const response = targets()
-		if (!response) {
-			return
-		}
-		if (response.currentPage !== targetsPage()) {
-			setTargetsPage(response.currentPage)
-		}
-	})
-
 	function goFirstPage() {
 		setTargetsPage(1)
 	}
