@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict'
-import { readdir, readFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
-import { extractReleaseFingerprint } from './localLibraryService.js'
+import type { WatchTarget } from '@shared/types'
+import { countMatchingLocalFiles, extractReleaseFingerprint } from './localLibraryService.js'
+import { buildWatchTargetMatchCandidates } from './watchlistService.js'
 
 const repoRoot = path.resolve(process.cwd())
 const torrentsDir = path.join(repoRoot, 'torrents')
@@ -103,6 +106,37 @@ test('extractReleaseFingerprint differentiates MultiSub from mono-sub releases',
 	assert.equal(multi.episodeTag, undefined)
 	assert.equal(mono.isMultisub, false)
 	assert.equal(multi.isMultisub, true)
+})
+
+test('countMatchingLocalFiles matches abbreviated local filenames through watch target aliases', async () => {
+	const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'nyaadl-megami-'))
+	const folderName = '[Erai-raws] Megami ~Isekai Tensei Nani ni Naritai Desu ka~ Ore ~Yuusha no Rokkotsu de~ [480p]'
+	const targetFolder = path.join(tempRoot, folderName)
+	const seriesKey = 'megami ~isekai tensei nani ni naritai desu ka~ ore ~yuusha no rokkotsu de~'
+
+	try {
+		await mkdir(targetFolder, { recursive: true })
+
+		for (const episode of ['01', '02', '03', '04', '05', '06', '07']) {
+			const fileName = `[Erai-raws] Megami - ${episode} [480p CR WEB-DL AVC AAC][MultiSub].mkv`
+			await writeFile(path.join(targetFolder, fileName), '')
+		}
+
+		const watchTarget: WatchTarget = {
+			folderName,
+			folderPath: targetFolder,
+			seriesKey,
+			resolution: '480p',
+			normalizedKey: `${seriesKey}::480p`,
+			matchCandidates: buildWatchTargetMatchCandidates(folderName, seriesKey, seriesKey, {
+				megami: seriesKey,
+			}),
+		}
+
+		assert.equal(await countMatchingLocalFiles(watchTarget), 7)
+	} finally {
+		await rm(tempRoot, { recursive: true, force: true })
+	}
 })
 
 test('extractReleaseFingerprint covers all existing source/tag/multisub combinations from snapshot.json titles', async () => {

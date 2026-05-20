@@ -146,6 +146,19 @@ export async function removeWatchRoot(root: string): Promise<string[]> {
 	return saveFolderConfig({ folders: current.filter((candidate) => candidate !== target) })
 }
 
+export function buildWatchTargetMatchCandidates(
+	folderName: string,
+	seriesBase: string,
+	seriesKey: string,
+	aliases: Record<string, string>,
+): string[] {
+	const aliasCandidates = Object.entries(aliases)
+		.filter(([, target]) => target === seriesKey)
+		.map(([source]) => source)
+
+	return buildMatchCandidates(folderName, [seriesBase, seriesKey, sanitizePathSegment(folderName), ...aliasCandidates])
+}
+
 export async function scanWatchTargets(): Promise<WatchTarget[]> {
 	const aliases = await loadAliases()
 	const roots = await loadWatchRoots()
@@ -163,7 +176,7 @@ export async function scanWatchTargets(): Promise<WatchTarget[]> {
 			const resolution = extractResolution(folderName)
 			const seriesKey = buildCanonicalSeriesKey(seriesBase, aliases)
 			const normalizedKey = buildNormalizedKey(seriesKey, resolution)
-			const matchCandidates = buildMatchCandidates(folderName, [seriesBase, seriesKey, sanitizePathSegment(folderName)])
+			const matchCandidates = buildWatchTargetMatchCandidates(folderName, seriesBase, seriesKey, aliases)
 
 			targets.push({
 				folderName,
