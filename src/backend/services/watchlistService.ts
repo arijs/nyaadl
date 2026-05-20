@@ -15,6 +15,7 @@ export interface WatchRootStatus {
 	path: string
 	exists: boolean
 	isDirectory: boolean
+	watchTargetsCount: number
 	issue?: string
 }
 
@@ -68,6 +69,7 @@ export async function inspectWatchRoots(roots: string[]): Promise<WatchRootStatu
 				path: normalizedRoot,
 				exists: true,
 				isDirectory: info.isDirectory(),
+				watchTargetsCount: 0,
 				issue: info.isDirectory() ? undefined : 'Not a directory',
 			})
 		} catch {
@@ -75,6 +77,7 @@ export async function inspectWatchRoots(roots: string[]): Promise<WatchRootStatu
 				path: normalizedRoot,
 				exists: false,
 				isDirectory: false,
+				watchTargetsCount: 0,
 				issue: 'Folder does not exist',
 			})
 		}

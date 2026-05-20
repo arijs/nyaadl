@@ -44,7 +44,7 @@ import {
 	sanitizeInternalNames,
 	submitDownloadedTorrent,
 } from './services/decisionWorkflowService'
-import type { AppStatus, BlacklistEntry, DecisionRecord, LastProcessed, PendingItem, QbittorrentFailureItem, TorrentFilter, TorrentItem, WatchTarget } from '@shared/types'
+import type { AppStatus, BlacklistEntry, DecisionRecord, LastProcessed, PendingItem, QbittorrentFailureItem, TorrentFilter, TorrentItem, WatchRootStatus, WatchTarget } from '@shared/types'
 
 const serverPort = 8787
 
@@ -95,6 +95,16 @@ function listFailedQbittorrentIds(): Set<string> {
 	return new Set(qbittorrentFailuresState.map((item) => item.torrentId))
 }
 
+function buildWatchRootStatusesWithCounts(): WatchRootStatus[] {
+	return watchRootStatusesState.map((status) => {
+		const watchTargetsCount = watchTargetsState.filter((target) => target.folderPath.toLowerCase().startsWith(status.path.toLowerCase())).length
+		return {
+			...status,
+			watchTargetsCount,
+		}
+	})
+}
+
 function buildStatus(): AppStatus {
 	const plan = determineScrapePages(lastProcessedState)
 	return {
@@ -107,8 +117,7 @@ function buildStatus(): AppStatus {
 		qbittorrentFailureCount: qbittorrentFailuresState.length,
 		nextPages: plan.pages,
 		lastProcessed: lastProcessedState,
-		watchRoots: watchRootsState,
-		watchRootStatuses: watchRootStatusesState,
+		watchRootStatuses: buildWatchRootStatusesWithCounts(),
 	}
 }
 

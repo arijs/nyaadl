@@ -76,9 +76,16 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 								<div class={root.exists && root.isDirectory ? 'rounded-2xl border border-emerald-400/15 bg-emerald-400/5 px-4 py-3' : 'rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3'}>
 									<div class="flex items-center justify-between gap-4">
 										<div class="min-w-0">
-											<p class="truncate text-sm text-slate-100">{root.path}</p>
+											<p class="text-sm text-slate-100">
+												<span class="">{root.path}</span>
+												<span class="rounded-full border border-cyan-300/25 bg-cyan-300/10 mx-2 px-2 py-0 text-xs font-medium leading-2 text-cyan-100">
+													{root.watchTargetsCount}
+												</span>
+											</p>
 											<p class={root.exists && root.isDirectory ? 'mt-1 text-xs text-emerald-200' : 'mt-1 text-xs text-rose-200'}>
-												{root.exists && root.isDirectory ? 'Available for scanning' : root.issue ?? 'Folder not available'}
+												{root.exists && root.isDirectory
+													? `Available for scanning`
+													: root.issue ?? 'Folder not available'}
 											</p>
 										</div>
 										<div class="flex items-center gap-2">
@@ -152,7 +159,7 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 								<div class="flex items-center justify-between gap-4">
 									<div>
 										<p class="font-medium text-white">{row.target.folderName}</p>
-										<p class="mt-1 text-xs text-slate-400">{row.target.normalizedKey}</p>
+										<p class="hidden mt-1 text-xs text-slate-400">{row.target.normalizedKey}</p>
 										<p class="mt-1 text-xs text-slate-500">Root: {row.rootName}</p>
 									</div>
 									<span class="rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-1 text-xs font-medium text-amber-200">

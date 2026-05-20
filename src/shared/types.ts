@@ -94,7 +94,6 @@ export interface AppStatus {
 	qbittorrentFailureCount: number
 	nextPages: number[]
 	lastProcessed?: LastProcessed
-	watchRoots: string[]
 	watchRootStatuses?: WatchRootStatus[]
 }
 
@@ -186,6 +185,7 @@ export interface WatchRootStatus {
 	path: string
 	exists: boolean
 	isDirectory: boolean
+	watchTargetsCount: number
 	issue?: string
 }
 
