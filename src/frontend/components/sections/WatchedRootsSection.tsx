@@ -178,7 +178,10 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 									<div>
 										<p class="font-medium text-white">{row.target.folderName}</p>
 										<p class="hidden mt-1 text-xs text-slate-400">{row.target.normalizedKey}</p>
-										<p class="mt-1 text-xs text-slate-500">Root: {row.rootName}</p>
+										<p class="mt-1 text-xs">
+											<span class="text-slate-500">{row.rootName}</span>
+											<span class="text-slate-400">{' / '}{row.matchingFilesCount ?? 0} files</span>
+										</p>
 									</div>
 									<span class="rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-1 text-xs font-medium text-amber-200">
 										{row.target.resolution}

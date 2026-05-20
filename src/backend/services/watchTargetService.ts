@@ -14,6 +14,7 @@ export interface WatchTargetRow {
 	target: WatchTarget
 	rootPath?: string
 	rootName: string
+	matchingFilesCount?: number
 }
 
 export interface WatchTargetPage extends WatchTargetResponse {

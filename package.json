@@ -13,6 +13,7 @@
     "start": "tsx src/backend/server.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "validate:local-library": "tsx src/scripts/validateLocalLibrary.ts",
+    "report:fingerprint-combos": "tsx src/scripts/reportFingerprintCombos.ts",
     "legacy:cli": "bun run index.ts"
   },
   "devDependencies": {

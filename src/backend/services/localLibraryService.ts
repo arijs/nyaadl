@@ -1,11 +1,13 @@
 import { readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { WatchTarget } from '@shared/types'
+import { buildMatchCandidates, extractResolution, normalizeText } from './normalizeService'
 
 const videoExtensions = new Set(['.mkv', '.mp4', '.avi', '.m4v', '.mov', '.wmv'])
 const reEpisode = /\s-\s(\d{1,4})(?:v\d+)?\b/i
 const reEpisodeTag = /\s-\s\d{1,4}(?:v\d+)?\s*(\([^)]+\))/i
 const reFileHash = /\[([a-f0-9]{8})\](?=\.[^.]+$|$)/i
+const reMultiSubTag = /\[\s*multisub\s*\]/i
 const providerMatchers: Array<{ pattern: RegExp; value: string }> = [
 	{ pattern: /\bhidive\b/i, value: 'hidive' },
 	{ pattern: /\badn\b/i, value: 'adn' },
@@ -25,6 +27,7 @@ export interface ReleaseFingerprint {
 	source?: string
 	episodeTag?: string
 	fileHash?: string
+	isMultisub: boolean
 }
 
 export interface TorrentVideoFile {
@@ -76,7 +79,8 @@ export function extractReleaseFingerprint(value: string): ReleaseFingerprint {
 	const source = normalizeToken(extractSource(value))
 	const episodeTag = normalizeToken(reEpisodeTag.exec(value)?.[1])
 	const fileHash = normalizeToken(reFileHash.exec(value)?.[1])
-	return { episode, source, episodeTag, fileHash }
+	const isMultisub = reMultiSubTag.test(value)
+	return { episode, source, episodeTag, fileHash, isMultisub }
 }
 
 function hasSameOptionalToken(left: string | undefined, right: string | undefined): boolean {
@@ -86,8 +90,43 @@ function hasSameOptionalToken(left: string | undefined, right: string | undefine
 	return Boolean(left) === Boolean(right)
 }
 
+function hasSameBooleanToken(left: boolean | undefined, right: boolean | undefined): boolean {
+	if (typeof left === 'boolean' && typeof right === 'boolean') {
+		return left === right
+	}
+	return Boolean(left) === Boolean(right)
+}
+
 function isVideoFile(fileName: string): boolean {
 	return videoExtensions.has(path.extname(fileName).toLowerCase())
+}
+
+export async function countMatchingLocalFiles(target: WatchTarget): Promise<number> {
+	const folderEntries = await readdir(target.folderPath, { withFileTypes: true }).catch(() => [])
+	if (folderEntries.length === 0) {
+		return 0
+	}
+
+	const targetCandidates = new Set(target.matchCandidates.map((candidate) => normalizeText(candidate)))
+	let matchingCount = 0
+
+	for (const entry of folderEntries) {
+		if (!entry.isFile() || !isVideoFile(entry.name)) {
+			continue
+		}
+
+		const resolution = extractResolution(entry.name)
+		if (resolution !== 'unknown' && target.resolution !== resolution) {
+			continue
+		}
+
+		const fileCandidates = buildMatchCandidates(entry.name, [entry.name])
+		if (fileCandidates.some((candidate) => targetCandidates.has(candidate))) {
+			matchingCount += 1
+		}
+	}
+
+	return matchingCount
 }
 
 export function buildTorrentVideoFiles(videoNames: string[], files: Array<{ path: string[]; length?: number }>): TorrentVideoFile[] {
@@ -144,6 +183,9 @@ export async function findExistingLocalMatch(target: WatchTarget, title: string,
 				return false
 			}
 			if (!hasSameOptionalToken(fingerprint.fileHash, localFingerprint.fileHash)) {
+				return false
+			}
+			if (!hasSameBooleanToken(fingerprint.isMultisub, localFingerprint.isMultisub)) {
 				return false
 			}
 			return true
@@ -221,6 +263,9 @@ export async function findExistingLocalMatchByTitle(target: WatchTarget, title: 
 			continue
 		}
 		if (!hasSameOptionalToken(titleFingerprint.fileHash, localFingerprint.fileHash)) {
+			continue
+		}
+		if (!hasSameBooleanToken(titleFingerprint.isMultisub, localFingerprint.isMultisub)) {
 			continue
 		}
 
