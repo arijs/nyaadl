@@ -4,7 +4,7 @@ import type { WatchTarget } from '@shared/types'
 import { buildMatchCandidates, extractResolution, normalizeText } from './normalizeService'
 
 const videoExtensions = new Set(['.mkv', '.mp4', '.avi', '.m4v', '.mov', '.wmv'])
-const reEpisode = /\s-\s(\d{1,4})(?:v\d+)?\b/i
+const reEpisode = /\s-\s(\d{1,4}(?:v\d+)?)\b/i
 const reEpisodeTag = /\s-\s\d{1,4}(?:v\d+)?\s*(\([^)]+\))/i
 const reFileHash = /\[([a-f0-9]{8})\](?=\.[^.]+$|$)/i
 const reMultiSubTag = /\[\s*multisub\s*\]/i

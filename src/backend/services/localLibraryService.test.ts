@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
 import type { WatchTarget } from '@shared/types'
-import { countMatchingLocalFiles, extractReleaseFingerprint } from './localLibraryService.js'
+import { analyzeFingerprintCombos, countMatchingLocalFiles, extractReleaseFingerprint } from './localLibraryService.js'
 import { buildWatchTargetMatchCandidates } from './watchlistService.js'
 
 const repoRoot = path.resolve(process.cwd())
@@ -96,16 +96,22 @@ function toComboKey(title: string): string {
 test('extractReleaseFingerprint differentiates MultiSub from mono-sub releases', () => {
 	const monoTitle = '[Erai-raws] Meitantei Precure - 01 [480p CR WEB-DL AVC AAC][A936C40F].mkv'
 	const multiTitle = '[Erai-raws] Meitantei Precure - 01 [480p CR WEB-DL AVC AAC][MultiSub][C1E5CAC5].mkv'
+	const revisionTitle = '[Erai-raws] Fate Strange Fake - 04v2 [480p CR WEB-DL AVC AAC][MultiSub][6C1B061D].mkv'
 
 	const mono = extractReleaseFingerprint(monoTitle)
 	const multi = extractReleaseFingerprint(multiTitle)
+	const revision = extractReleaseFingerprint(revisionTitle)
 
 	assert.equal(mono.source, 'cr')
 	assert.equal(multi.source, 'cr')
+	assert.equal(revision.source, 'cr')
 	assert.equal(mono.episodeTag, undefined)
 	assert.equal(multi.episodeTag, undefined)
+	assert.equal(revision.episodeTag, undefined)
 	assert.equal(mono.isMultisub, false)
 	assert.equal(multi.isMultisub, true)
+	assert.equal(revision.isMultisub, true)
+	assert.equal(revision.episode, '04v2')
 })
 
 test('countMatchingLocalFiles matches abbreviated local filenames through watch target aliases', async () => {
@@ -163,6 +169,44 @@ test('countMatchingLocalFiles treats internal title hyphens as a post-processed 
 		}
 
 		assert.equal(await countMatchingLocalFiles(watchTarget), 12)
+	} finally {
+		await rm(tempRoot, { recursive: true, force: true })
+	}
+})
+
+test('analyzeFingerprintCombos counts episode revisions like 04v2 as distinct entries', async () => {
+	const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'nyaadl-fate-strange-fake-v2-'))
+	const folderName = '[Erai-raws] Fate-Strange Fake [480p]'
+	const targetFolder = path.join(tempRoot, folderName)
+	const seriesKey = 'fate-strange fake'
+
+	try {
+		await mkdir(targetFolder, { recursive: true })
+
+		for (const episode of ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11']) {
+			const fileName = `[Erai-raws] Fate Strange Fake - ${episode} [480p CR WEB-DL AVC AAC][MultiSub][FD972D85].mkv`
+			await writeFile(path.join(targetFolder, fileName), '')
+		}
+
+		await writeFile(
+			path.join(targetFolder, '[Erai-raws] Fate Strange Fake - 04v2 [480p CR WEB-DL AVC AAC][MultiSub][6C1B061D].mkv'),
+			'',
+		)
+
+		const watchTarget: WatchTarget = {
+			folderName,
+			folderPath: targetFolder,
+			seriesKey,
+			resolution: '480p',
+			normalizedKey: `${seriesKey}::480p`,
+			matchCandidates: buildWatchTargetMatchCandidates(folderName, seriesKey, seriesKey, {}),
+		}
+
+		const combos = await analyzeFingerprintCombos(watchTarget)
+		assert.equal(combos.length, 1)
+		assert.equal(combos[0]?.count, 12)
+		assert.equal(combos[0]?.minEpisode, '1')
+		assert.equal(combos[0]?.maxEpisode, '11')
 	} finally {
 		await rm(tempRoot, { recursive: true, force: true })
 	}
