@@ -215,6 +215,9 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 												<p class="mt-1 text-xs">
 													<span class="text-slate-500">{row.rootName}</span>
 													<span class="text-slate-400">{' / '}{row.matchingFilesCount ?? 0} files</span>
+													<Show when={(row.fingerprintCombos?.length ?? 0) > 1}>
+														<span class="text-slate-400">{' · '}{row.fingerprintCombos?.length ?? 0} combos</span>
+													</Show>
 												</p>
 											</Show>
 											<Show when={isExpanded() && (row.fingerprintCombos?.length ?? 0) > 1}>
