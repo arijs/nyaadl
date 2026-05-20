@@ -43,11 +43,21 @@ export interface TorrentHistoryResponse {
 
 export type TorrentHistoryListResponse = ApiEnvelope<TorrentHistoryResponse>
 
+export interface FingerprintComboBreakdown {
+	source?: string
+	episodeTag?: string
+	isMultisub: boolean
+	count: number
+	minEpisode?: string
+	maxEpisode?: string
+}
+
 export interface WatchTargetRow {
 	target: WatchTarget
 	rootPath?: string
 	rootName: string
 	matchingFilesCount?: number
+	fingerprintCombos?: FingerprintComboBreakdown[]
 }
 
 export interface WatchTargetQuery {

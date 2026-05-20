@@ -129,6 +129,67 @@ export async function countMatchingLocalFiles(target: WatchTarget): Promise<numb
 	return matchingCount
 }
 
+export interface FingerprintComboBreakdown {
+	source?: string
+	episodeTag?: string
+	isMultisub: boolean
+	count: number
+	minEpisode?: string
+	maxEpisode?: string
+}
+
+export async function analyzeFingerprintCombos(target: WatchTarget): Promise<FingerprintComboBreakdown[]> {
+	const folderEntries = await readdir(target.folderPath, { withFileTypes: true }).catch(() => [])
+	if (folderEntries.length === 0) {
+		return []
+	}
+
+	const targetCandidates = new Set(target.matchCandidates.map((candidate) => normalizeText(candidate)))
+	const comboMap = new Map<string, { episodes: Set<string>; fingerprint: ReleaseFingerprint }>()
+
+	for (const entry of folderEntries) {
+		if (!entry.isFile() || !isVideoFile(entry.name)) {
+			continue
+		}
+
+		const resolution = extractResolution(entry.name)
+		if (resolution !== 'unknown' && target.resolution !== resolution) {
+			continue
+		}
+
+		const fileCandidates = buildMatchCandidates(entry.name, [entry.name])
+		if (!fileCandidates.some((candidate) => targetCandidates.has(candidate))) {
+			continue
+		}
+
+		const fingerprint = extractReleaseFingerprint(entry.name)
+		const comboKey = `${fingerprint.source ?? 'none'}|${fingerprint.episodeTag ?? 'none'}|${fingerprint.isMultisub}`
+		const episodes = comboMap.get(comboKey)?.episodes ?? new Set<string>()
+
+		if (fingerprint.episode) {
+			episodes.add(fingerprint.episode)
+		}
+
+		comboMap.set(comboKey, { episodes, fingerprint })
+	}
+
+	return Array.from(comboMap.values()).map((item) => {
+		const sorted = Array.from(item.episodes)
+			.map((ep) => parseInt(ep, 10))
+			.filter((n) => !isNaN(n))
+			.sort((a, b) => a - b)
+
+		return {
+			source: item.fingerprint.source,
+			episodeTag: item.fingerprint.episodeTag,
+			isMultisub: item.fingerprint.isMultisub,
+			count: item.episodes.size,
+			minEpisode: sorted.length > 0 ? sorted[0]?.toString() : undefined,
+			maxEpisode: sorted.length > 0 ? sorted[sorted.length - 1]?.toString() : undefined,
+		}
+	})
+}
+
 export function buildTorrentVideoFiles(videoNames: string[], files: Array<{ path: string[]; length?: number }>): TorrentVideoFile[] {
 	const lengthsByName = new Map<string, number | undefined>()
 	for (const file of files) {

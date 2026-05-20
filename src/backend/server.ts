@@ -19,7 +19,7 @@ import { listDecisionTorrentIds, listPendingTorrentIds } from './services/stateS
 import { buildTorrentHistoryPage } from './services/torrentHistoryService'
 import { buildBlacklistPage, parseBlacklistEntry } from './services/blacklistService'
 import { buildWatchTargetPage } from './services/watchTargetService'
-import { countMatchingLocalFiles } from './services/localLibraryService'
+import { countMatchingLocalFiles, analyzeFingerprintCombos } from './services/localLibraryService'
 import {
 	blacklistState,
 	bootstrapDiscoveryState,
@@ -447,6 +447,7 @@ async function main(): Promise<void> {
 			page.items.map(async (row) => ({
 				...row,
 				matchingFilesCount: await countMatchingLocalFiles(row.target),
+				fingerprintCombos: await analyzeFingerprintCombos(row.target),
 			})),
 		)
 		return { success: true, data: page }
