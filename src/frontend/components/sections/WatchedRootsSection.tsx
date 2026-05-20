@@ -187,7 +187,7 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 										<div class="flex-1 min-w-0">
 											<div class="flex items-center gap-2">
 												<p class="font-medium text-white">{row.target.folderName}</p>
-												<Show when={(row.fingerprintCombos?.length ?? 0) > 0}>
+												<Show when={(row.fingerprintCombos?.length ?? 0) > 1}>
 													<button
 														type="button"
 														class="inline-flex items-center justify-center w-5 h-5 rounded hover:bg-white/10 transition"
@@ -198,11 +198,26 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 												</Show>
 											</div>
 											<p class="hidden mt-1 text-xs text-slate-400">{row.target.normalizedKey}</p>
-											<p class="mt-1 text-xs">
-												<span class="text-slate-500">{row.rootName}</span>
-												<span class="text-slate-400">{' / '}{row.matchingFilesCount ?? 0} files</span>
-											</p>
-											<Show when={isExpanded() && (row.fingerprintCombos?.length ?? 0) > 0}>
+											<Show when={(row.fingerprintCombos?.length ?? 0) === 1}>
+												<p class="mt-1 text-xs text-slate-300">
+													<span class="text-slate-500">{row.rootName}</span>
+													<span class="text-slate-400">{' / '}</span>
+													<Show when={row.fingerprintCombos?.[0]}>
+														{(combo) => (
+															<span class="text-slate-300">
+																{combo().source ?? 'no-source'} {combo().episodeTag ? `/ ${combo().episodeTag}` : ''} / {combo().isMultisub ? 'multisub' : 'mono'} · {combo().count} ep{combo().count !== 1 ? 's' : ''} {combo().minEpisode && combo().maxEpisode ? `(${combo().minEpisode}–${combo().maxEpisode})` : ''}
+															</span>
+														)}
+													</Show>
+												</p>
+											</Show>
+											<Show when={(row.fingerprintCombos?.length ?? 0) !== 1}>
+												<p class="mt-1 text-xs">
+													<span class="text-slate-500">{row.rootName}</span>
+													<span class="text-slate-400">{' / '}{row.matchingFilesCount ?? 0} files</span>
+												</p>
+											</Show>
+											<Show when={isExpanded() && (row.fingerprintCombos?.length ?? 0) > 1}>
 												<div class="mt-3 space-y-2">
 													<For each={row.fingerprintCombos ?? []}>
 														{(combo) => (
