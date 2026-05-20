@@ -13,10 +13,6 @@ export function useDashboardActions(options: UseDashboardActionsOptions) {
 		}
 	}
 
-	async function rescanWatchlist() {
-		await refreshAfter(postJson('/api/watchlist/scan'))
-	}
-
 	async function scrapePageOne() {
 		await refreshAfter(postJson('/api/scrape/run'))
 	}
@@ -72,7 +68,6 @@ export function useDashboardActions(options: UseDashboardActionsOptions) {
 	}
 
 	return {
-		rescanWatchlist,
 		scrapePageOne,
 		bootstrapNextPage,
 		approveAllPending,

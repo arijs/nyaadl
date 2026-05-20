@@ -331,11 +331,6 @@ async function main(): Promise<void> {
 		}
 	})
 
-	app.post('/api/watchlist/scan', async () => {
-		const targets = await refreshWatchTargets()
-		return { success: true, data: targets }
-	})
-
 	app.post('/api/qbittorrent/config', async (event) => {
 		const body = await readBody<QbittorrentConfigBody>(event).catch(() => undefined)
 		const config = updateQbittorrentRuntimeConfig({
@@ -366,6 +361,7 @@ async function main(): Promise<void> {
 
 	app.post('/api/watchlist/folders/refresh', async () => {
 		await refreshWatchRoots()
+		await refreshWatchTargets()
 		return { success: true, data: { watchRoots: watchRootsState, watchRootStatuses: watchRootStatusesState, status: buildStatus() } }
 	})
 

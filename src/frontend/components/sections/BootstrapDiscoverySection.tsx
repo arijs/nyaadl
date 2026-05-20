@@ -75,7 +75,6 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 						when={props.bootstrap()}
 						fallback={(
 							<>
-								<ActionButton label="Rescan watchlist" onClick={props.dashboardActions.rescanWatchlist} compact />
 								<ActionButton label="Start scraping" onClick={props.bootstrapWorkflow.runDefaultBootstrapDiscovery} compact />
 							</>
 						)}
@@ -115,7 +114,6 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 									</Show>
 								</div>
 								<div class="flex w-full flex-col gap-2 lg:w-auto lg:min-w-60">
-									<ActionButton label="Rescan watchlist" onClick={props.dashboardActions.rescanWatchlist} compact />
 									<div class="flex w-full items-center gap-2">
 										<ActionButton
 											label="Prev page"

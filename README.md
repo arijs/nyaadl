@@ -192,7 +192,6 @@ Visible stats:
 
 Visible buttons and controls:
 
-- `Rescan watchlist`: rebuilds watch targets from the current watched roots.
 - `Start scraping`: starts the main incremental scraping flow by calling `POST /api/bootstrap/discover-last-downloaded`.
 - `Continue scraping`: appears after a previous step returned a next cursor.
 - `Reset scraping status`: clears the current bootstrap cursor and last scraping result in the frontend workflow.
@@ -206,7 +205,7 @@ Visible items:
 
 - input box for a root path such as `Q:\2026.2 PRIMAVERA`
 - `Add folder`
-- `Reload roots`
+- `Reload roots`: reloads configured roots and rebuilds watch targets discovered inside them.
 - per-root status cards showing the folder path, whether the path exists and is a directory, an `OK` or `Missing` badge, and a `Remove` action
 - warning banner when one or more roots are missing or invalid
 
