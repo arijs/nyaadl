@@ -183,15 +183,11 @@ test('analyzeFingerprintCombos counts episode revisions like 04v2 as distinct en
 	try {
 		await mkdir(targetFolder, { recursive: true })
 
-		for (const episode of ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11']) {
-			const fileName = `[Erai-raws] Fate Strange Fake - ${episode} [480p CR WEB-DL AVC AAC][MultiSub][FD972D85].mkv`
+		for (const episode of ['01', '02', '03', '04', '04v2', '05', '06', '07', '08', '09', '10', '11']) {
+			const hash = episode === '04v2' ? '6C1B061D' : 'FD972D85'
+			const fileName = `[Erai-raws] Fate Strange Fake - ${episode} [480p CR WEB-DL AVC AAC][MultiSub][${hash}].mkv`
 			await writeFile(path.join(targetFolder, fileName), '')
 		}
-
-		await writeFile(
-			path.join(targetFolder, '[Erai-raws] Fate Strange Fake - 04v2 [480p CR WEB-DL AVC AAC][MultiSub][6C1B061D].mkv'),
-			'',
-		)
 
 		const watchTarget: WatchTarget = {
 			folderName,
