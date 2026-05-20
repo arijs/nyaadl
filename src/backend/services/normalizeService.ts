@@ -8,6 +8,7 @@ const reHyphenSpacing = /([a-z0-9])\s*-\s*([a-z0-9])/gi
 const reVideoExtension = /\.(?:mkv|mp4|avi|mov|m4v|webm|ts|m2ts)$/i
 const reResolution = /\b([0-9]{3,4}p)\b/i
 const reSeasonToken = /\b(?:s\d{1,2}|season\s*\d{1,2})\b/gi
+const reInnerTitleHyphen = /(?<=[a-z0-9])-(?=[a-z0-9])/g
 
 export function normalizeText(value: string): string {
 	return value
@@ -70,6 +71,11 @@ export function sanitizePathSegment(value: string): string {
 	return value.replace(/[\\/:*?"<>|]+/g, '-').replace(reWhitespace, ' ').trim()
 }
 
+function expandPostProcessedCandidateVariants(candidate: string): string[] {
+	const hyphenAsSpace = candidate.replace(reInnerTitleHyphen, ' ').replace(reWhitespace, ' ').trim()
+	return [candidate, hyphenAsSpace]
+}
+
 export function buildMatchCandidates(title: string, internalNames: string[]): string[] {
 	const rawItems = [title, ...internalNames].filter((item): item is string => Boolean(item && item.trim()))
 	const normalizedItems = rawItems
@@ -80,7 +86,7 @@ export function buildMatchCandidates(title: string, internalNames: string[]): st
 		const seriesBase = deriveSeriesBase(normalized)
 		const firstPart = normalized.split('-').map((part) => part.trim()).find(Boolean) ?? ''
 		const seasonless = normalized.replace(reSeasonToken, '').replace(reWhitespace, ' ').trim()
-		return [normalized, seriesBase, firstPart, seasonless]
+		return [normalized, seriesBase, firstPart, seasonless].flatMap(expandPostProcessedCandidateVariants)
 	})
 
 	return Array.from(new Set(expanded.filter((candidate) => Boolean(candidate) && candidate !== 'unknown')))

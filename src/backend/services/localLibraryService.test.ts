@@ -139,6 +139,35 @@ test('countMatchingLocalFiles matches abbreviated local filenames through watch 
 	}
 })
 
+test('countMatchingLocalFiles treats internal title hyphens as a post-processed fallback candidate', async () => {
+	const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'nyaadl-fate-strange-fake-'))
+	const folderName = '[Erai-raws] Fate-Strange Fake [480p]'
+	const targetFolder = path.join(tempRoot, folderName)
+	const seriesKey = 'fate-strange fake'
+
+	try {
+		await mkdir(targetFolder, { recursive: true })
+
+		for (const episode of ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']) {
+			const fileName = `[Erai-raws] Fate Strange Fake - ${episode} [480p CR WEB-DL AVC EAC3][MultiSub][FD972D85].mkv`
+			await writeFile(path.join(targetFolder, fileName), '')
+		}
+
+		const watchTarget: WatchTarget = {
+			folderName,
+			folderPath: targetFolder,
+			seriesKey,
+			resolution: '480p',
+			normalizedKey: `${seriesKey}::480p`,
+			matchCandidates: buildWatchTargetMatchCandidates(folderName, seriesKey, seriesKey, {}),
+		}
+
+		assert.equal(await countMatchingLocalFiles(watchTarget), 12)
+	} finally {
+		await rm(tempRoot, { recursive: true, force: true })
+	}
+})
+
 test('extractReleaseFingerprint covers all existing source/tag/multisub combinations from snapshot.json titles', async () => {
 	const snapshotFiles = await listSnapshotFiles(torrentsDir)
 	assert.ok(snapshotFiles.length > 0, 'expected at least one snapshot.json file in torrents/')
