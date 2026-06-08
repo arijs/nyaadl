@@ -1,3 +1,4 @@
+import { Show } from 'solid-js'
 import ExecutionStateSection from './components/sections/ExecutionStateSection'
 import HeroSection from './components/sections/HeroSection'
 import PendingQueueSection from './components/sections/PendingQueueSection'
@@ -6,6 +7,7 @@ import WatchedRootsSection from './components/sections/WatchedRootsSection'
 import BootstrapSessionLogSection from './components/sections/BootstrapSessionLogSection'
 import BootstrapDiscoverySection from './components/sections/BootstrapDiscoverySection'
 import BlacklistManagerSection from './components/sections/BlacklistManagerSection'
+import ApproveDestinationModal from './components/ui/ApproveDestinationModal'
 import { useDashboardScreen } from './hooks/useDashboardScreen'
 
 export default function App() {
@@ -23,6 +25,15 @@ export default function App() {
 
 	return (
 		<div class="min-h-screen bg-[radial-gradient(circle_at_top,rgba(255,215,0,0.18),transparent_35%),linear-gradient(180deg,#0f172a_0%,#111827_48%,#020617_100%)] text-slate-100">
+			<Show when={bootstrapWorkflow.approveDestinationModal()}>
+				{(modal) => (
+					<ApproveDestinationModal
+						state={modal()}
+						onConfirm={bootstrapWorkflow.confirmApproveWithDestination}
+						onCancel={bootstrapWorkflow.cancelApproveDestination}
+					/>
+				)}
+			</Show>
 			<main class="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 px-6 py-8 lg:px-10">
 				<HeroSection status={status} />
 

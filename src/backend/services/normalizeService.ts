@@ -10,6 +10,8 @@ const reResolution = /\b([0-9]{3,4}p)\b/i
 const reSeasonToken = /\b(?:s\d{1,2}|season\s*\d{1,2})\b/gi
 const reInnerTitleHyphen = /(?<=[a-z0-9])-(?=[a-z0-9])/g
 
+const reFolderEpisodeBeforeMetadata = /\s*-\s*\d{1,4}(?:v\d+)?(?:\s+(?:END|FINAL|BATCH|OVA|SP))*(?=\s*(?:\[[^\]]*\]|\([^)]*\))*\s*$)/i
+
 export function normalizeText(value: string): string {
 	return value
 		.trim()
@@ -74,6 +76,16 @@ export function sanitizePathSegment(value: string): string {
 function expandPostProcessedCandidateVariants(candidate: string): string[] {
 	const hyphenAsSpace = candidate.replace(reInnerTitleHyphen, ' ').replace(reWhitespace, ' ').trim()
 	return [candidate, hyphenAsSpace]
+}
+
+export function deriveFolderNameFromTitle(rawTitle: string): string {
+	return rawTitle
+		.trim()
+		.replace(reVideoExtension, '')
+		.replace(reFolderEpisodeBeforeMetadata, '')
+		.replace(reTrailingHash, '')
+		.replace(reWhitespace, ' ')
+		.trim()
 }
 
 export function buildMatchCandidates(title: string, internalNames: string[]): string[] {

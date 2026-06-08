@@ -1,11 +1,12 @@
+import path from 'node:path'
 import { H3, getQuery, readBody } from 'h3'
 import { toNodeHandler } from 'h3/node'
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { advanceCheckpoint, determineScrapePages } from './services/checkpointService'
 import { discoverLastDownloadedCheckpointStep } from './services/bootstrapDiscoveryService'
 import { badRequest, notFound } from './services/apiErrorService'
 import { addWatchRoot, loadAliases, removeWatchRoot, validateWatchRootPath } from './services/watchlistService'
-import { downloadTorrentFile } from './services/downloaderService'
+import { downloadTorrentFile, findDownloadedTorrentFileById } from './services/downloaderService'
 import { getQbittorrentRuntimeConfig, updateQbittorrentRuntimeConfig } from './services/qbittorrentService'
 import { buildDailyReport } from './services/reportService'
 // If nyaaScraperServiceStream fails, you can use the cheerio version below
@@ -14,7 +15,7 @@ import { scrapeNyaaPage } from './services/nyaaScraperServiceStream'
 import { inspectAndClassifyTorrent, savePageSnapshot } from './services/nyaaTorrentService'
 import { parseTorrentMetainfo } from './services/torrentMetainfoService'
 import { loadBlacklist, saveBlacklist, saveBootstrapDiscovery, saveDecisions, saveLastProcessed, savePending, saveQbittorrentSubmitted } from './services/stateService'
-import { buildNormalizedKey, deriveSeriesBase } from './services/normalizeService'
+import { buildNormalizedKey, deriveSeriesBase, deriveFolderNameFromTitle } from './services/normalizeService'
 import { listDecisionTorrentIds, listPendingTorrentIds } from './services/stateService'
 import { buildTorrentHistoryPage } from './services/torrentHistoryService'
 import { buildBlacklistPage, parseBlacklistEntry } from './services/blacklistService'
@@ -76,6 +77,11 @@ interface QbittorrentConfigBody {
 	password?: string
 }
 
+interface ApproveBody {
+	rootPath?: string
+	seriesFolder?: string
+}
+
 function rememberDownloadedTorrent(item: TorrentItem): void {
 	if (torrentsState.some((torrent) => torrent.torrentId === item.torrentId)) {
 		return
@@ -122,7 +128,7 @@ function buildStatus(): AppStatus {
 	}
 }
 
-async function approvePendingItemByIndex(pendingIndex: number): Promise<DecisionRecord> {
+async function approvePendingItemByIndex(pendingIndex: number, approveBody?: ApproveBody): Promise<DecisionRecord> {
 	const pendingItem = pendingState[pendingIndex]!
 	const aliases = await loadAliases()
 	const downloadedTorrent = await downloadTorrentFile(pendingItem.item)
@@ -142,14 +148,28 @@ async function approvePendingItemByIndex(pendingIndex: number): Promise<Decision
 			.trim()
 		resolvedInternalNames = sanitizeInternalNames([filenameCandidate])
 	}
-	const target = resolveTorrentTarget(pendingItem.item, resolvedInternalNames, aliases)
+	let targetFolderPath: string
+	const rootPath = approveBody?.rootPath?.trim()
+	const seriesFolder = approveBody?.seriesFolder?.trim()
+	if (rootPath && seriesFolder) {
+		const normalizedRoot = path.resolve(rootPath)
+		if (!watchRootsState.some((r) => path.resolve(r) === normalizedRoot)) {
+			await addWatchRoot(rootPath)
+			await refreshWatchRoots()
+		}
+		targetFolderPath = path.join(normalizedRoot, seriesFolder)
+		await mkdir(targetFolderPath, { recursive: true }).catch(() => undefined)
+		await refreshWatchTargets()
+	} else {
+		targetFolderPath = resolveTorrentTarget(pendingItem.item, resolvedInternalNames, aliases).folderPath
+	}
 	pendingState.splice(pendingIndex, 1)
 	await savePending(pendingState)
 	await submitDownloadedTorrent({
 		item: pendingItem.item,
 		torrentFilePath: downloadedTorrent.filePath,
 		torrentFilename: downloadedTorrent.filename,
-		targetFolderPath: target.folderPath,
+		targetFolderPath,
 		decisionStatus: 'approved',
 		decisionReason: `approved manually -> ${downloadedTorrent.filename}`,
 		source: 'manual_approve',
@@ -501,6 +521,48 @@ async function main(): Promise<void> {
 		return { success: true, data: { removed: key, items: blacklistState.map(parseBlacklistEntry) } }
 	})
 
+	app.get('/api/pending/:id/folder-options', async (event) => {
+		const torrentId = event.context.params?.id
+		if (!torrentId) {
+			throw badRequest('Missing torrent id')
+		}
+		const pendingItem = pendingState.find((item) => item.torrentId === torrentId)
+		if (!pendingItem) {
+			throw notFound('Pending item not found')
+		}
+		const fromTitle = deriveFolderNameFromTitle(pendingItem.item.title)
+		let resolvedInternalNames = sanitizeInternalNames(pendingItem.internalNames)
+		if (resolvedInternalNames.length === 0) {
+			const existing = await findDownloadedTorrentFileById(torrentId)
+			const filePath = existing?.filePath
+			if (filePath) {
+				const metainfo = await readFile(filePath).then((buf) => parseTorrentMetainfo(buf)).catch(() => undefined)
+				if (metainfo) {
+					resolvedInternalNames = sanitizeInternalNames(metainfo.videoNames.length > 0 ? metainfo.videoNames : [metainfo.name])
+				}
+			}
+		}
+		if (resolvedInternalNames.length === 0) {
+			const downloaded = await downloadTorrentFile(pendingItem.item).catch(() => undefined)
+			if (downloaded) {
+				const metainfo = await readFile(downloaded.filePath).then((buf) => parseTorrentMetainfo(buf)).catch(() => undefined)
+				if (metainfo) {
+					resolvedInternalNames = sanitizeInternalNames(metainfo.videoNames.length > 0 ? metainfo.videoNames : [metainfo.name])
+				}
+			}
+		}
+		const firstInternalName = resolvedInternalNames[0]
+		const fromFilename = firstInternalName ? deriveFolderNameFromTitle(firstInternalName) : fromTitle
+		return {
+			success: true,
+			data: {
+				fromTitle,
+				fromFilename,
+				watchRoots: watchRootStatusesState,
+			},
+		}
+	})
+
 	app.post('/api/pending/:id/approve', async (event) => {
 		const torrentId = event.context.params?.id
 		if (!torrentId) {
@@ -510,7 +572,8 @@ async function main(): Promise<void> {
 		if (pendingIndex < 0) {
 			throw notFound('Pending item not found')
 		}
-		const decision = await approvePendingItemByIndex(pendingIndex)
+		const body = await readBody<ApproveBody>(event).catch(() => ({})) as ApproveBody
+		const decision = await approvePendingItemByIndex(pendingIndex, body)
 		return { success: true, data: decision }
 	})
 

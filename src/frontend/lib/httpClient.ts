@@ -45,6 +45,14 @@ async function readApiError(response: Response): Promise<string> {
 	return `Request failed: ${response.status}`
 }
 
+export async function getJson<T>(url: string): Promise<ApiEnvelope<T>> {
+	const response = await fetch(url)
+	if (!response.ok) {
+		throw new Error(await readApiError(response))
+	}
+	return response.json() as Promise<ApiEnvelope<T>>
+}
+
 export async function postJson<T>(url: string): Promise<ApiEnvelope<T>> {
 	const response = await fetch(url, { method: 'POST' })
 	if (!response.ok) {

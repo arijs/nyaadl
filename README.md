@@ -133,11 +133,97 @@ When new torrents appear on Nyaa, the system tries to connect each release to on
 
 When the system cannot safely determine the destination, the screen shows one item needing review. You resolve it with one of three actions:
 
-- `Approve`: downloads the `.torrent`, resolves the target folder from the best available metadata, records the decision, and tries to submit it to qBittorrent.
+- `Approve`: downloads the `.torrent`, resolves the target folder from the best available metadata, records the decision, and tries to submit it to qBittorrent. If no matching watch target exists, a destination picker opens before the torrent is submitted. See [Approving Torrents Without a Matched Folder](#approving-torrents-without-a-matched-folder).
 - `Blacklist`: rejects that series and resolution combination for future runs. The blacklist key is based on normalized series name plus resolution, so future items with the same series and resolution are auto-blocked.
 - `Skip`: dismisses the current item without blacklisting it. This only skips that specific torrent. If a later torrent with the same series and resolution appears again, the system may ask you again.
 
 Manual review happens one item at a time both in the live scraping card and in the `Pending queue` section.
+
+## Approving Torrents Without a Matched Folder
+
+When you click `Approve` for a pending item and no existing watch target matches the torrent, the system cannot determine where to save the files. Instead of failing silently, it opens a **destination picker** modal so you can specify the save location once. All subsequent episodes of the same series and resolution will then be matched automatically.
+
+### When this happens
+
+This occurs when a series has never been downloaded before and no folder for it exists inside any of your watched roots. The typical case is a brand-new show or a resolution variant you have not set up yet.
+
+### What the destination picker shows
+
+**Root folder**
+
+A dropdown lists all currently configured watch roots. Each entry shows the full path and a `(missing)` label if the folder no longer exists on disk. At the bottom of the list is an `Enter custom path…` option that reveals a free-text input for a path that is not yet in your watch roots list.
+
+**Series folder name**
+
+Two options are shown, each pre-filled with a name derived from the torrent metadata:
+
+- `From series title` — derived from the Nyaa listing title. Group prefix and resolution are preserved; only the episode number and trailing markers such as `END` are stripped.
+- `From video filename` — derived from the actual filename of the video inside the `.torrent` file. The system downloads the torrent metadata to read this name if it was not already available. This option is useful when the Nyaa title differs from the filename used inside the archive.
+
+Clicking either option copies its suggested name into the editable **Series folder** field below. You can then modify that field freely before confirming.
+
+**Series folder**
+
+A text input pre-filled with whichever source option is currently selected. Edit this to correct any part of the name before confirming.
+
+**Full path preview**
+
+A read-only line showing the exact path that will be passed to qBittorrent: `{root folder}\{series folder}`.
+
+### Step-by-step example
+
+Suppose a new torrent arrives for episode 9 of a series that has no folder yet:
+
+```
+[Erai-raws] Kimi to Boku no Saigo no Senjou Arui wa Sekai ga Hajimaru Seisen - 09 [720p].mkv
+```
+
+1. The system puts the item in the pending queue with reason `requires approval`.
+2. You click `Approve`.
+3. The system tries to match the torrent to a watch target and fails.
+4. The destination picker opens automatically.
+5. Under **Root folder**, select an existing root such as `Q:\2020.4 Outono`, or choose `Enter custom path…` and type a new root path.
+6. Under **Series folder name**, the `From series title` option shows:
+   ```
+   [Erai-raws] Kimi to Boku no Saigo no Senjou Arui wa Sekai ga Hajimaru Seisen [720p]
+   ```
+   The `From video filename` option shows the name derived from the internal `.mkv` filename, which for Erai-raws releases is typically identical.
+7. Click the option that looks correct. The name is copied into the **Series folder** field. Adjust if needed.
+8. The **Full path** preview updates to show, for example:
+   ```
+   Q:\2020.4 Outono\[Erai-raws] Kimi to Boku no Saigo no Senjou Arui wa Sekai ga Hajimaru Seisen [720p]
+   ```
+9. Click `Confirm destination`.
+
+### What happens after confirmation
+
+The backend performs all of the following in a single step:
+
+1. If the chosen root is not yet in your watch roots list, it is added automatically and saved to `data/folders-config.json`.
+2. The series folder is created on disk at the full path shown in the preview.
+3. Watch roots are rescanned so the new folder immediately becomes a watch target.
+4. The `.torrent` file is submitted to qBittorrent with the confirmed path as the save location.
+5. The decision is recorded as `approved` and the aliases file is updated with the series name.
+
+Because the folder now exists as a watch target, any later episode of the same series and resolution — whether found during the current scraping session or a future one — will be matched automatically without prompting again.
+
+### Folder name derivation
+
+The suggested folder names follow the convention used by most release groups:
+
+- The release group tag at the start is kept: `[Erai-raws]`, `[SubsPlease]`, etc.
+- The resolution tag at the end is kept: `[720p]`, `(1080p)`, etc.
+- Only the episode number and any trailing episode markers (`END`, `FINAL`, `BATCH`) are removed.
+
+Examples:
+
+| Torrent title | Suggested folder name |
+|---|---|
+| `[Erai-raws] Anime Name - 12v2 END [720p].mkv` | `[Erai-raws] Anime Name [720p]` |
+| `[SubsPlease] Anime Name - 03 (1080p) [ABCD1234].mkv` | `[SubsPlease] Anime Name (1080p)` |
+| `[Group] Anime Name - 01 [1080p].mkv` | `[Group] Anime Name [1080p]` |
+
+You can always edit the **Series folder** field to match any naming convention you prefer before confirming.
 
 ## qBittorrent Submission Flow
 

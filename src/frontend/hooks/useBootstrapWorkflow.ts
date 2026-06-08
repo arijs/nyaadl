@@ -1,9 +1,10 @@
 import { createEffect, createSignal } from 'solid-js'
 import type { Accessor } from 'solid-js'
-import type { StatusResponse } from '../../shared/api'
+import type { FolderOptionsData, StatusResponse } from '../../shared/api'
 import type { BootstrapDiscoveryResult } from '../../shared/types'
-import { postJson, requestJson } from '../lib/httpClient'
+import { getJson, postJson, postJsonBody, requestJson } from '../lib/httpClient'
 import type { BootstrapCursor } from '../types'
+import type { ApproveDestinationState } from '../components/ui/ApproveDestinationModal'
 
 interface UseBootstrapWorkflowOptions {
 	bootstrap: Accessor<BootstrapDiscoveryResult | undefined>
@@ -19,6 +20,7 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 	const [bootstrapQueryDraft, setBootstrapQueryDraft] = createSignal('')
 	const [qbForceResubmit, setQbForceResubmit] = createSignal(false)
 	const [queueActionErrors, setQueueActionErrors] = createSignal<Record<string, string>>({})
+	const [approveDestinationModal, setApproveDestinationModal] = createSignal<ApproveDestinationState | null>(null)
 
 	const normalizeQuery = (value: string | undefined): string => value?.trim().replace(/\s+/g, ' ') ?? ''
 	const getActiveCustomQuery = () => normalizeQuery(options.bootstrap()?.customQuery)
@@ -197,10 +199,16 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 		title?: string
 		page?: number
 		continueDiscovery?: boolean
+		rootPath?: string
+		seriesFolder?: string
 	}) {
 		try {
 			clearQueueActionError(params.torrentId)
-			await postJson(`/api/pending/${params.torrentId}/${params.action}`)
+			if (params.action === 'approve' && params.rootPath && params.seriesFolder) {
+				await postJsonBody(`/api/pending/${params.torrentId}/approve`, { rootPath: params.rootPath, seriesFolder: params.seriesFolder })
+			} else {
+				await postJson(`/api/pending/${params.torrentId}/${params.action}`)
+			}
 			options.appendLogEntry({
 				timestampUtc: new Date().toISOString(),
 				kind: 'action',
@@ -214,6 +222,24 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 			}
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : `Failed to ${params.action} torrent`
+			if (params.action === 'approve' && !params.rootPath && error instanceof Error && error.message.startsWith('Unable to resolve qBittorrent destination folder')) {
+				try {
+					const optionsResponse = await getJson<FolderOptionsData>(`/api/pending/${params.torrentId}/folder-options`)
+					setApproveDestinationModal({
+						torrentId: params.torrentId,
+						title: params.title ?? params.torrentId,
+						page: params.page,
+						continueDiscovery: params.continueDiscovery ?? false,
+						fromTitle: optionsResponse.data.fromTitle,
+						fromFilename: optionsResponse.data.fromFilename,
+						watchRoots: optionsResponse.data.watchRoots,
+					})
+					await Promise.resolve(options.refetch())
+					return
+				} catch {
+					// fall through to normal error handling
+				}
+			}
 			setBootstrapMessage(errorMessage)
 			setQueueActionErrors((current) => ({
 				...current,
@@ -228,6 +254,25 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 		} finally {
 			await Promise.resolve(options.refetch())
 		}
+	}
+
+	async function confirmApproveWithDestination(params: { rootPath: string; seriesFolder: string }) {
+		const modal = approveDestinationModal()
+		if (!modal) return
+		setApproveDestinationModal(null)
+		await resolvePendingItemAction({
+			torrentId: modal.torrentId,
+			action: 'approve',
+			title: modal.title,
+			page: modal.page,
+			continueDiscovery: modal.continueDiscovery,
+			rootPath: params.rootPath,
+			seriesFolder: params.seriesFolder,
+		})
+	}
+
+	function cancelApproveDestination() {
+		setApproveDestinationModal(null)
 	}
 
 	async function resolveBootstrapAction(action: 'approve' | 'blacklist' | 'skip') {
@@ -282,6 +327,9 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 		qbForceResubmit,
 		setQbForceResubmit,
 		getQueueActionError,
+		approveDestinationModal,
+		confirmApproveWithDestination,
+		cancelApproveDestination,
 		runBootstrapDiscoveryStep,
 		runDefaultBootstrapDiscovery,
 		submitBootstrapQuery,

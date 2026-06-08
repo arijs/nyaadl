@@ -1,4 +1,4 @@
-import type { AppStatus, BlacklistEntry, BootstrapDiscoveryResult, DailyReport, PendingItem, QbittorrentFailureItem, QbittorrentRuntimeConfig, TorrentFilter, TorrentHistoryItem, WatchTarget } from './types'
+import type { AppStatus, BlacklistEntry, BootstrapDiscoveryResult, DailyReport, PendingItem, QbittorrentFailureItem, QbittorrentRuntimeConfig, TorrentFilter, TorrentHistoryItem, WatchRootStatus, WatchTarget } from './types'
 
 export interface ApiEnvelope<T> {
 	success: boolean
@@ -105,6 +105,14 @@ export type BlacklistListResponse = ApiEnvelope<BlacklistResponse>
 export type ListResponse<T> = ApiEnvelope<T>
 
 export type ReportResponse = ApiEnvelope<DailyReport>
+
+export interface FolderOptionsData {
+	fromTitle: string
+	fromFilename: string
+	watchRoots: WatchRootStatus[]
+}
+
+export type FolderOptionsResponse = ApiEnvelope<FolderOptionsData>
 
 export interface ApiErrorBody {
 	success: false
