@@ -308,7 +308,17 @@ async function processBootstrapItem(
 			? decisionsState.findLast((decision) => decision.torrentId === item.torrentId)
 			: undefined
 
-		if (latestDecision) {
+		// A previously blocked/skipped torrent must be re-evaluated against the
+		// current blacklist instead of blindly replaying the old rejection. If the
+		// series+resolution is no longer blacklisted, fall through to fresh
+		// classification so the user is prompted again.
+		const wasRejected = latestDecision?.status === 'blocked' || latestDecision?.status === 'skipped'
+		const reEvaluateRejection = wasRejected
+			&& !pendingTorrentIds.has(item.torrentId)
+			&& !qbittorrentFailedIds.has(item.torrentId)
+			&& !isTorrentBlacklisted(buildTorrentMatchResult({ title: item.title, videoNames: [] }, aliases), blacklistState)
+
+		if (latestDecision && !reEvaluateRejection) {
 			return await processReplayedDecision(
 				latestDecision,
 				item,
@@ -322,14 +332,17 @@ async function processBootstrapItem(
 			)
 		}
 
-		if (pendingTorrentIds.has(item.torrentId)) {
-			const pendingItem = pendingState.find((entry) => entry.torrentId === item.torrentId)
-			if (pendingItem) {
-				autoRejected.push(buildBootstrapSummary(pendingItem.item, pendingItem.status, `${pendingItem.reason} (already pending from queue)`, itemIndex))
-				return { inspectedCount: 1 }
+		if (!latestDecision) {
+			if (pendingTorrentIds.has(item.torrentId)) {
+				const pendingItem = pendingState.find((entry) => entry.torrentId === item.torrentId)
+				if (pendingItem) {
+					autoRejected.push(buildBootstrapSummary(pendingItem.item, pendingItem.status, `${pendingItem.reason} (already pending from queue)`, itemIndex))
+					return { inspectedCount: 1 }
+				}
 			}
+			return { inspectedCount: 0 }
 		}
-		return { inspectedCount: 0 }
+		// else: latestDecision is a no-longer-blacklisted rejection -> fall through
 	}
 
 	inspectedCount += 1
