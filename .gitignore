@@ -38,3 +38,4 @@ qbittorrent password.txt
 .DS_Store
 
 *.ignore.*
+*.ignore.lock

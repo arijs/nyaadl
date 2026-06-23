@@ -48,7 +48,7 @@ import {
 } from './services/decisionWorkflowService'
 import type { AppStatus, BlacklistEntry, DecisionRecord, LastProcessed, PendingItem, QbittorrentFailureItem, TorrentFilter, TorrentItem, WatchRootStatus, WatchTarget } from '@shared/types'
 
-const serverPort = 8787
+const serverPort = 8900
 
 
 interface ScrapeRunBody {
