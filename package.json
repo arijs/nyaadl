@@ -11,6 +11,7 @@
     "dev:client": "vite",
     "build": "vite build",
     "start": "tsx src/backend/server.ts",
+    "test": "tsx --test \"src/**/!(*.ignore).test.ts\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "validate:local-library": "tsx src/scripts/validateLocalLibrary.ts",
     "report:fingerprint-combos": "tsx src/scripts/reportFingerprintCombos.ts",

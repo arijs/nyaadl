@@ -1,7 +1,14 @@
 const reWhitespace = /\s+/g
 const reReleasePrefix = /^\[Erai-raws\]\s*/i
-const reEpisodeSuffix = /\s*-\s*\d{1,4}(?:v\d+)?(?:\s*\([^)]*\))?$/i
-const reEpisodeBeforeMetadata = /\s*-\s*\d{1,4}(?:v\d+)?(?:\s*\([^)]*\))?(?=\s*\[)/i
+// Optional label sitting between the hyphen and the episode number, e.g. "- Special 03",
+// "- OVA 02". Without this the label + number leaks into the series key and every special
+// is treated as a distinct series.
+const episodeLabelSource = '(?:specials?|sp|ova|oad|ona|nced|ncop|preview|recap|pv)\\s+'
+// Optional finale/batch markers trailing the episode number, e.g. "- 12 END", "- 13 FINAL".
+// These must be absorbed too, otherwise the finale episode splits off as its own series.
+const episodeTrailerSource = '(?:\\s+(?:end|final|batch|ova|sp))*'
+const reEpisodeSuffix = new RegExp(`\\s*-\\s*(?:${episodeLabelSource})?\\d{1,4}(?:v\\d+)?${episodeTrailerSource}(?:\\s*\\([^)]*\\))?$`, 'i')
+const reEpisodeBeforeMetadata = new RegExp(`\\s*-\\s*(?:${episodeLabelSource})?\\d{1,4}(?:v\\d+)?${episodeTrailerSource}(?:\\s*\\([^)]*\\))?(?=\\s*\\[)`, 'i')
 const reTrailingHash = /\s*\[[A-F0-9]{8}\]$/i
 const reTrailingMetadataBlocks = /(?:\s*\[[^\]]+\])+$/i
 const reHyphenSpacing = /([a-z0-9])\s*-\s*([a-z0-9])/gi
@@ -10,7 +17,7 @@ const reResolution = /\b([0-9]{3,4}p)\b/i
 const reSeasonToken = /\b(?:s\d{1,2}|season\s*\d{1,2})\b/gi
 const reInnerTitleHyphen = /(?<=[a-z0-9])-(?=[a-z0-9])/g
 
-const reFolderEpisodeBeforeMetadata = /\s*-\s*\d{1,4}(?:v\d+)?(?:\s+(?:END|FINAL|BATCH|OVA|SP))*(?=\s*(?:\[[^\]]*\]|\([^)]*\))*\s*$)/i
+const reFolderEpisodeBeforeMetadata = new RegExp(`\\s*-\\s*(?:${episodeLabelSource})?\\d{1,4}(?:v\\d+)?${episodeTrailerSource}(?:\\s*\\([^)]*\\))?(?=(?:\\s*(?:\\[[^\\]]*\\]|\\([^)]*\\)))*\\s*$)`, 'i')
 
 export function normalizeText(value: string): string {
 	return value
@@ -78,14 +85,23 @@ function expandPostProcessedCandidateVariants(candidate: string): string[] {
 	return [candidate, hyphenAsSpace]
 }
 
-export function deriveFolderNameFromTitle(rawTitle: string): string {
-	return rawTitle
+export function deriveFolderNameFromTitle(rawTitle: string): { fullMeta: string, onlyRes: string } {
+	const fullMeta = rawTitle
 		.trim()
 		.replace(reVideoExtension, '')
 		.replace(reFolderEpisodeBeforeMetadata, '')
 		.replace(reTrailingHash, '')
 		.replace(reWhitespace, ' ')
 		.trim()
+	const metaStr = fullMeta.match(reTrailingMetadataBlocks)
+	const resStr = metaStr ? extractResolution(metaStr[0]) : undefined
+	const onlyRes = resStr
+		? fullMeta
+			.replace(reTrailingMetadataBlocks, '')
+			.trim()
+			.concat(' [', resStr, ']')
+		: fullMeta
+	return { fullMeta, onlyRes }
 }
 
 export function buildMatchCandidates(title: string, internalNames: string[]): string[] {

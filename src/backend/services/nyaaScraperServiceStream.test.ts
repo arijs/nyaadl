@@ -24,6 +24,7 @@ function nextArchiveJsonPath(folderPath: string): string {
 
 const pageFolders = readdirSync(torrentsDir)
 	.filter((name) => /^page-\d{4}-\d{2}-\d{2}-\d+$/.test(name))
+	.filter((name) => existsSync(join(torrentsDir, name, 'snapshot.html')))
 	.sort((a, b) => a.localeCompare(b))
 
 for (const folderName of pageFolders) {

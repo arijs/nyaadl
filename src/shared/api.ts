@@ -106,9 +106,16 @@ export type ListResponse<T> = ApiEnvelope<T>
 
 export type ReportResponse = ApiEnvelope<DailyReport>
 
+export interface FolderTitleVariations {
+	fullMeta: string
+	onlyRes: string
+}
+
+export type FolderTitleVariationKey = keyof FolderTitleVariations
+
 export interface FolderOptionsData {
-	fromTitle: string
-	fromFilename: string
+	fromTitle: FolderTitleVariations
+	fromFilename: FolderTitleVariations
 	watchRoots: WatchRootStatus[]
 }
 
