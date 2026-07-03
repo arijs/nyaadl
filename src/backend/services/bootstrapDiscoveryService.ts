@@ -45,6 +45,7 @@ interface BootstrapDiscoverStepBody {
 	cursorToken?: string
 	qbForceResubmit?: boolean
 	customQuery?: string
+	wholePage?: boolean
 }
 
 function buildBootstrapSummary(
@@ -300,6 +301,7 @@ async function processBootstrapItem(
 	autoRejected: BootstrapAutoDecisionSummary[],
 	alreadyDownloaded: BootstrapAutoDecisionSummary[],
 	backfilled: BootstrapAutoDecisionSummary[],
+	stopOnPending: boolean,
 ): Promise<{ inspectedCount: number; result?: BootstrapDiscoveryResult }> {
 	let inspectedCount = 0
 
@@ -445,6 +447,10 @@ async function processBootstrapItem(
 		pendingTorrentIds.add(item.torrentId)
 		await savePending(pendingState)
 		await saveDecisions(decisionsState)
+		if (!stopOnPending) {
+			// Whole-page mode: queue this pending item and keep scanning the rest of the page.
+			return { inspectedCount: inspectedCount + 1 }
+		}
 		const result: BootstrapDiscoveryResult = {
 			startedAtUtc,
 			finishedAtUtc: new Date().toISOString(),
@@ -525,6 +531,8 @@ export async function discoverLastDownloadedCheckpointStep(
 	const page = input?.page && Number.isInteger(input.page) && input.page > 0 ? input.page : 1
 	const startItemIndex = input?.itemIndex && Number.isInteger(input.itemIndex) && input.itemIndex >= 0 ? input.itemIndex : 0
 	const qbForceResubmit = input?.qbForceResubmit === true
+	const wholePage = input?.wholePage === true
+	const stopOnPending = !wholePage
 	const customQuery = normalizeNyaaQuery(input?.customQuery)
 	const queryKey = buildNyaaQueryKey(customQuery)
 	const pagesScanned = 1
@@ -594,6 +602,7 @@ export async function discoverLastDownloadedCheckpointStep(
 			nextPage: page + 1,
 			nextItemIndex: 0,
 			nextCursorToken: undefined,
+			wholePage,
 			autoApproved,
 			autoRejected,
 			alreadyDownloaded,
@@ -626,6 +635,7 @@ export async function discoverLastDownloadedCheckpointStep(
 			autoRejected,
 			alreadyDownloaded,
 			backfilled,
+			stopOnPending,
 		)
 		inspectedCount += itemCount
 		if (result) {
@@ -653,6 +663,7 @@ export async function discoverLastDownloadedCheckpointStep(
 		nextPage: page + 1,
 		nextItemIndex: 0,
 		nextCursorToken: undefined,
+		wholePage,
 		autoApproved,
 		autoRejected,
 		alreadyDownloaded,

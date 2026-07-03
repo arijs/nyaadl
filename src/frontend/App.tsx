@@ -52,6 +52,7 @@ export default function App() {
 				</div>
 
 				<BootstrapDiscoverySection
+					status={status}
 					bootstrap={bootstrap}
 					bootstrapWorkflow={bootstrapWorkflow}
 					dashboardActions={dashboardActions}

@@ -1,11 +1,13 @@
 import { createSignal, For, Show } from 'solid-js'
 import type { Accessor } from 'solid-js'
-import type { BootstrapDiscoveryResult } from '../../../shared/types'
+import type { StatusResponse } from '../../../shared/api'
+import type { BootstrapDiscoveryResult, PendingItem } from '../../../shared/types'
 import type { useDashboardActions } from '../../hooks/useDashboardActions'
 import type { useBootstrapWorkflow } from '../../hooks/useBootstrapWorkflow'
 import ActionButton from '../ui/ActionButton'
 
 interface BootstrapDiscoverySectionProps {
+	status: Accessor<StatusResponse | undefined>
 	bootstrap: Accessor<BootstrapDiscoveryResult | undefined>
 	bootstrapWorkflow: ReturnType<typeof useBootstrapWorkflow>
 	dashboardActions: ReturnType<typeof useDashboardActions>
@@ -23,6 +25,33 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 	const [collapsed, setCollapsed] = createSignal(false)
 	const previewLimit = 5
 	const currentDiscoveryPage = () => props.bootstrap()?.currentPage ?? props.bootstrapWorkflow.bootstrapCursor()?.page ?? 1
+	// In whole-page mode the whole page was queued at once, so the review spotlight tracks the
+	// head of the live queue and advances as items get resolved. Single-item mode keeps using the
+	// static actionItem returned by the last discovery step.
+	const reviewItem = (): PendingItem | undefined => {
+		const bootstrap = props.bootstrap()
+		if (bootstrap?.wholePage) {
+			return props.status()?.data.queue?.[0]
+		}
+		return bootstrap?.actionItem
+	}
+	const resolveReviewItem = (action: 'approve' | 'blacklist' | 'skip') => {
+		const item = reviewItem()
+		if (!item) {
+			return
+		}
+		if (props.bootstrap()?.wholePage) {
+			if (action === 'approve') {
+				void props.bootstrapWorkflow.approveQueueItem(item.torrentId, item.item.title, item.item.page)
+			} else if (action === 'blacklist') {
+				void props.bootstrapWorkflow.blacklistQueueItem(item.torrentId, item.item.title, item.item.page)
+			} else {
+				void props.bootstrapWorkflow.skipQueueItem(item.torrentId, item.item.title, item.item.page)
+			}
+			return
+		}
+		void props.bootstrapWorkflow.resolveBootstrapAction(action)
+	}
 	const shownCount = (total: number, expanded: boolean) => (expanded ? total : Math.min(total, previewLimit))
 	const qbStatusCounts = () => {
 		const entries = [
@@ -50,7 +79,7 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 			<div class={`flex items-center justify-between ${props.bootstrap() ? 'mb-2' : 'mb-0'}`}>
 				<h2 class="text-base font-semibold text-white">
 					Scraping status
-					<Show when={props.bootstrap()?.actionItem}>
+					<Show when={reviewItem()}>
 						<span class="ml-2 text-xs font-normal text-amber-300">(Item pending)</span>
 					</Show>
 				</h2>
@@ -71,6 +100,15 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 						disabled={props.bootstrapWorkflow.isBootstrapQuerySubmitDisabled()}
 						compact
 					/>
+					<label class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-200">
+						<input
+							type="checkbox"
+							checked={props.bootstrapWorkflow.processWholePage()}
+							onChange={(event) => props.bootstrapWorkflow.setProcessWholePage(event.currentTarget.checked)}
+							class="h-3.5 w-3.5 accent-amber-300"
+						/>
+						<span>process whole page</span>
+					</label>
 					<Show
 						when={props.bootstrap()}
 						fallback={(
@@ -138,15 +176,15 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 									</label>
 								</div>
 							</div>
-							<Show when={bootstrap().actionItem}>
+							<Show when={reviewItem()}>
 								{(actionItem) => (
 									<div class="rounded-xl border border-white/10 bg-white/5 p-3">
 										<p class="font-medium text-white">Needs review: {actionItem().item.title}</p>
 										<p class="mt-1 text-xs text-slate-400">{actionItem().reason}</p>
 										<div class="mt-3 flex flex-wrap gap-2">
-											<ActionButton label="Approve" onClick={() => props.bootstrapWorkflow.resolveBootstrapAction('approve')} compact />
-											<ActionButton label="Blacklist" onClick={() => props.bootstrapWorkflow.resolveBootstrapAction('blacklist')} compact />
-											<ActionButton label="Skip" onClick={() => props.bootstrapWorkflow.resolveBootstrapAction('skip')} compact />
+											<ActionButton label="Approve" onClick={() => resolveReviewItem('approve')} compact />
+											<ActionButton label="Blacklist" onClick={() => resolveReviewItem('blacklist')} compact />
+											<ActionButton label="Skip" onClick={() => resolveReviewItem('skip')} compact />
 										</div>
 									</div>
 								)}

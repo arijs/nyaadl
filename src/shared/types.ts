@@ -157,6 +157,7 @@ export interface BootstrapDiscoveryResult {
 	nextPage?: number
 	nextItemIndex?: number
 	nextCursorToken?: string
+	wholePage?: boolean
 	autoApproved?: BootstrapAutoDecisionSummary[]
 	autoRejected?: BootstrapAutoDecisionSummary[]
 	alreadyDownloaded?: BootstrapAutoDecisionSummary[]

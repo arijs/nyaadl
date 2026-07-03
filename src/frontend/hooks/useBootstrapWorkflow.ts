@@ -19,6 +19,7 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 	const [bootstrapRetryPage, setBootstrapRetryPage] = createSignal<number | undefined>(undefined)
 	const [bootstrapQueryDraft, setBootstrapQueryDraft] = createSignal('')
 	const [qbForceResubmit, setQbForceResubmit] = createSignal(false)
+	const [processWholePage, setProcessWholePage] = createSignal(false)
 	const [queueActionErrors, setQueueActionErrors] = createSignal<Record<string, string>>({})
 	const [approveDestinationModal, setApproveDestinationModal] = createSignal<ApproveDestinationState | null>(null)
 
@@ -67,6 +68,7 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 			const response = await requestJson<{ result: BootstrapDiscoveryResult }>('/api/bootstrap/discover-last-downloaded', 'POST', {
 				...(requestCursor ?? {}),
 				qbForceResubmit: qbForceResubmit(),
+				wholePage: processWholePage(),
 				customQuery: activeCustomQuery.length > 0 ? activeCustomQuery : undefined,
 			})
 			const result = response.data.result
@@ -326,6 +328,8 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 		isBootstrapQuerySubmitDisabled,
 		qbForceResubmit,
 		setQbForceResubmit,
+		processWholePage,
+		setProcessWholePage,
 		getQueueActionError,
 		approveDestinationModal,
 		confirmApproveWithDestination,
