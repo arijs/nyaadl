@@ -42,41 +42,38 @@ export async function inspectAndClassifyTorrent(item: TorrentItem, aliases: Reco
 	const matchCandidates = buildMatchCandidates(item.title, internalNames)
 	const blacklistHit = isTorrentBlacklisted({ ...matchResult, matchCandidates }, blacklist)
 	const matchedTarget = matchTorrentToWatchTargets({ ...matchResult, matchCandidates }, watchTargets)
+	// Only scan the local library when a watch target could auto-download; a blacklist hit
+	// short-circuits before this (R2), so a blocked series never triggers a disk scan.
+	const existingMatch = !blacklistHit && matchedTarget ? await findExistingLocalMatch(matchedTarget, item.title, torrentVideoFiles) : undefined
 
-	if (matchedTarget) {
-		const existingMatch = await findExistingLocalMatch(matchedTarget, item.title, torrentVideoFiles)
-		if (existingMatch?.status === 'exact') {
-			return {
-				...item,
-				seriesBaseRaw: matchResult.seriesBaseRaw,
-				resolution: matchResult.resolution,
-				matchCandidates,
-				status: 'already_downloaded',
-				reason: existingMatch.reason,
-				seriesKey: matchResult.seriesKey,
-				matchedTarget,
-				internalNames,
-			}
-		}
-		if (existingMatch?.status === 'conflict') {
-			return {
-				...item,
-				seriesBaseRaw: matchResult.seriesBaseRaw,
-				resolution: matchResult.resolution,
-				matchCandidates,
-				status: 'pending',
-				reason: existingMatch.reason,
-				seriesKey: matchResult.seriesKey,
-				matchedTarget,
-				internalNames,
-			}
-		}
-		return { ...item, seriesBaseRaw: matchResult.seriesBaseRaw, resolution: matchResult.resolution, matchCandidates, status: 'auto_downloaded', reason: `matched ${matchedTarget.normalizedKey}`, seriesKey: matchResult.seriesKey, matchedTarget, internalNames }
-	}
+	const { status, reason } = classifyTorrentDecision(blacklistHit, matchedTarget, existingMatch?.status, existingMatch?.reason)
+	const base = { ...item, seriesBaseRaw: matchResult.seriesBaseRaw, resolution: matchResult.resolution, matchCandidates, seriesKey: matchResult.seriesKey, internalNames }
+	// matchedTarget is only meaningful (and only recorded) when it actually drove the decision.
+	return status === 'blocked' || !matchedTarget ? { ...base, status, reason } : { ...base, status, reason, matchedTarget }
+}
+
+// ponytail: blacklist has precedence over watch-target match (R2). A series+resolution block
+// must win even when the series is otherwise watched, so a retroactively blacklisted resolution
+// (e.g. 1080p) is never auto-downloaded via its watch folder. Pure so the ordering is testable.
+export function classifyTorrentDecision(
+	blacklistHit: boolean,
+	matchedTarget: WatchTarget | undefined,
+	existingLocalStatus: 'exact' | 'conflict' | undefined,
+	existingLocalReason: string | undefined,
+): { status: DecisionStatus; reason: string } {
 	if (blacklistHit) {
-		return { ...item, seriesBaseRaw: matchResult.seriesBaseRaw, resolution: matchResult.resolution, matchCandidates, status: 'blocked', reason: 'series+resolution blacklisted', seriesKey: matchResult.seriesKey, internalNames }
+		return { status: 'blocked', reason: 'series+resolution blacklisted' }
 	}
-	return { ...item, seriesBaseRaw: matchResult.seriesBaseRaw, resolution: matchResult.resolution, matchCandidates, status: 'pending', reason: 'requires approval', seriesKey: matchResult.seriesKey, internalNames }
+	if (matchedTarget) {
+		if (existingLocalStatus === 'exact') {
+			return { status: 'already_downloaded', reason: existingLocalReason ?? 'already downloaded' }
+		}
+		if (existingLocalStatus === 'conflict') {
+			return { status: 'pending', reason: existingLocalReason ?? 'conflict' }
+		}
+		return { status: 'auto_downloaded', reason: `matched ${matchedTarget.normalizedKey}` }
+	}
+	return { status: 'pending', reason: 'requires approval' }
 }
 
 export async function savePageSnapshot(page: number, html: string, items: TorrentItem[], customQuery?: string): Promise<void> {

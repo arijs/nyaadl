@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createResource, createSignal } from 'solid-js'
 import type { TorrentHistoryQuery, TorrentHistoryResponse } from '../../shared/api'
-import { postJsonBody } from '../lib/httpClient'
+import type { BlacklistConfirmState } from '../components/ui/BlacklistConfirmModal'
+import { postJsonBody, requestJson } from '../lib/httpClient'
 import type { TorrentFilter } from '../types'
 
 const emptyCounts: Record<TorrentFilter, number> = {
@@ -26,6 +27,9 @@ export function useTorrentHistoryFilter() {
 	const [excludeTitleQuery, setExcludeTitleQuery] = createSignal('')
 	const [resolutionFilter, setResolutionFilter] = createSignal('all')
 	const [currentPage, setCurrentPage] = createSignal(1)
+	const [blacklistModal, setBlacklistModal] = createSignal<BlacklistConfirmState | null>(null)
+	const [isBlacklisting, setIsBlacklisting] = createSignal(false)
+	const [blacklistError, setBlacklistError] = createSignal<string | undefined>(undefined)
 	const pageSize = 10
 
 	const [history, { refetch }] = createResource(
@@ -87,6 +91,36 @@ export function useTorrentHistoryFilter() {
 		}
 	})
 
+	function openBlacklistModal(state: BlacklistConfirmState) {
+		setBlacklistError(undefined)
+		setBlacklistModal(state)
+	}
+
+	function cancelBlacklist() {
+		if (isBlacklisting()) {
+			return
+		}
+		setBlacklistModal(null)
+	}
+
+	async function confirmBlacklist() {
+		const modal = blacklistModal()
+		if (!modal) {
+			return
+		}
+		setIsBlacklisting(true)
+		setBlacklistError(undefined)
+		try {
+			await requestJson('/api/blacklist', 'POST', { torrentId: modal.torrentId })
+			setBlacklistModal(null)
+			await refetch()
+		} catch (error) {
+			setBlacklistError(error instanceof Error ? error.message : 'Falha ao bloquear.')
+		} finally {
+			setIsBlacklisting(false)
+		}
+	}
+
 	function goFirstPage() {
 		setCurrentPage(1)
 	}
@@ -123,6 +157,12 @@ export function useTorrentHistoryFilter() {
 		currentPage,
 		totalPages,
 		pageSize,
+		blacklistModal,
+		isBlacklisting,
+		blacklistError,
+		openBlacklistModal,
+		confirmBlacklist,
+		cancelBlacklist,
 		refetch,
 		goFirstPage,
 		goPreviousPage,

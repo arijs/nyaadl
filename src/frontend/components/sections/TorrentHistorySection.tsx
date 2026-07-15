@@ -107,7 +107,7 @@ export default function TorrentHistorySection(props: TorrentHistorySectionProps)
 				<Show when={props.torrentHistoryFilter.totalItems()} fallback={<EmptyState title="No torrent history yet" description="Approved, matched, already downloaded, blocked, and pending items will appear here after a run." />}>
 					<For each={props.torrentHistoryFilter.paginatedTorrents()}>
 						{(torrent) => (
-							<div class="max-w-full rounded-2xl border border-white/10 bg-white/5 p-4">
+							<div class="group max-w-full rounded-2xl border border-white/10 bg-white/5 p-4">
 								<div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
 									<div class="min-w-0 max-w-full space-y-1">
 										<div class="flex flex-wrap items-center gap-2">
@@ -120,7 +120,21 @@ export default function TorrentHistorySection(props: TorrentHistorySectionProps)
 											{torrent.item.publishedAtUtc ?? 'n/a'} · seeders {torrent.item.seeders ?? 'n/a'} · leechers {torrent.item.leechers ?? 'n/a'} · downloads {torrent.item.downloads ?? 'n/a'}
 										</p>
 									</div>
-									<span class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-slate-300">{torrent.torrentId}</span>
+									<div class="flex flex-col items-end gap-2">
+										<span class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-slate-300">{torrent.torrentId}</span>
+										<button
+											type="button"
+											class="rounded-full border border-rose-400/30 bg-rose-400/10 px-3 py-1 text-[11px] font-medium text-rose-200 opacity-0 pointer-events-none transition-opacity duration-150 hover:bg-rose-400/20 group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto"
+											onClick={() => props.torrentHistoryFilter.openBlacklistModal({
+												torrentId: torrent.torrentId,
+												series: torrent.item.seriesBaseRaw,
+												resolution: torrent.item.resolution,
+												title: torrent.item.title,
+											})}
+										>
+											Bloquear série + resolução
+										</button>
+									</div>
 								</div>
 							</div>
 						)}

@@ -72,7 +72,7 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 					<Show when={(props.status()?.data.status.watchRootStatuses ?? []).length} fallback={<EmptyState title="No watched roots configured" description="Add a folder above to start building watch targets." />}>
 						<For each={props.status()?.data.status.watchRootStatuses ?? []}>
 							{(root) => (
-								<div class={root.exists && root.isDirectory ? 'rounded-2xl border border-emerald-400/15 bg-emerald-400/5 px-4 py-3' : 'rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3'}>
+								<div class={root.exists && root.isDirectory ? 'group rounded-2xl border border-emerald-400/15 bg-emerald-400/5 px-4 py-3' : 'group rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3'}>
 									<div class="flex items-center justify-between gap-4">
 										<div class="min-w-0">
 											<p class="text-sm text-slate-100">
@@ -88,10 +88,16 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 											</p>
 										</div>
 										<div class="flex items-center gap-2">
+											<button
+												type="button"
+												class="rounded-full border border-rose-400/30 bg-rose-400/10 px-3 py-1 text-[11px] font-medium text-rose-200 opacity-0 pointer-events-none transition-opacity duration-150 hover:bg-rose-400/20 group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto"
+												onClick={() => void props.watchRoots.removeWatchRoot(root.path)}
+											>
+												Remove
+											</button>
 											<span class={root.exists && root.isDirectory ? 'rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-200' : 'rounded-full border border-rose-400/20 bg-rose-400/10 px-3 py-1 text-xs font-medium text-rose-200'}>
 												{root.exists && root.isDirectory ? 'OK' : 'Missing'}
 											</span>
-											<ActionButton label="Remove" onClick={() => props.watchRoots.removeWatchRoot(root.path)} compact />
 										</div>
 									</div>
 								</div>

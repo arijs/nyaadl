@@ -8,6 +8,7 @@ import BootstrapSessionLogSection from './components/sections/BootstrapSessionLo
 import BootstrapDiscoverySection from './components/sections/BootstrapDiscoverySection'
 import BlacklistManagerSection from './components/sections/BlacklistManagerSection'
 import ApproveDestinationModal from './components/ui/ApproveDestinationModal'
+import BlacklistConfirmModal from './components/ui/BlacklistConfirmModal'
 import { useDashboardScreen } from './hooks/useDashboardScreen'
 
 export default function App() {
@@ -31,6 +32,17 @@ export default function App() {
 						state={modal()}
 						onConfirm={bootstrapWorkflow.confirmApproveWithDestination}
 						onCancel={bootstrapWorkflow.cancelApproveDestination}
+					/>
+				)}
+			</Show>
+			<Show when={torrentHistoryFilter.blacklistModal()}>
+				{(modal) => (
+					<BlacklistConfirmModal
+						state={modal()}
+						pending={torrentHistoryFilter.isBlacklisting()}
+						error={torrentHistoryFilter.blacklistError()}
+						onConfirm={torrentHistoryFilter.confirmBlacklist}
+						onCancel={torrentHistoryFilter.cancelBlacklist}
 					/>
 				)}
 			</Show>

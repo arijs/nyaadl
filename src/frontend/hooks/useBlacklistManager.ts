@@ -34,6 +34,10 @@ export function useBlacklistManager(options: UseBlacklistManagerOptions) {
 	const [resolutionFilter, setResolutionFilter] = createSignal('all')
 	const [currentPage, setCurrentPage] = createSignal(1)
 	const [deletingKey, setDeletingKey] = createSignal<string | undefined>(undefined)
+	const [addSeries, setAddSeries] = createSignal('')
+	const [addResolution, setAddResolution] = createSignal('1080p')
+	const [isAdding, setIsAdding] = createSignal(false)
+	const [addError, setAddError] = createSignal<string | undefined>(undefined)
 	const [displayBlacklist, setDisplayBlacklist] = createSignal<BlacklistResponse | undefined>(undefined)
 	const pageSize = 10
 
@@ -91,6 +95,27 @@ export function useBlacklistManager(options: UseBlacklistManagerOptions) {
 		}
 	}
 
+	async function addItem() {
+		const series = addSeries().trim()
+		const resolution = addResolution().trim()
+		if (!series || !resolution) {
+			setAddError('Informe série e resolução.')
+			return
+		}
+		setIsAdding(true)
+		setAddError(undefined)
+		try {
+			await requestJson('/api/blacklist', 'POST', { series, resolution })
+			setAddSeries('')
+			await Promise.resolve(options.refetch())
+			await refetch()
+		} catch (error) {
+			setAddError(error instanceof Error ? error.message : 'Falha ao adicionar.')
+		} finally {
+			setIsAdding(false)
+		}
+	}
+
 	function goFirstPage() {
 		setCurrentPage(1)
 	}
@@ -124,6 +149,13 @@ export function useBlacklistManager(options: UseBlacklistManagerOptions) {
 		pageSize,
 		deletingKey,
 		removeItem,
+		addSeries,
+		setAddSeries,
+		addResolution,
+		setAddResolution,
+		isAdding,
+		addError,
+		addItem,
 		refetch,
 		goFirstPage,
 		goPreviousPage,

@@ -505,6 +505,61 @@ async function main(): Promise<void> {
 		return { success: true, data: page }
 	})
 
+	app.post('/api/blacklist', async (event) => {
+		const body = await readBody<{ series?: string; resolution?: string; torrentId?: string }>(event).catch(() => undefined)
+
+		let series: string | undefined
+		let resolution: string | undefined
+		if (body?.torrentId) {
+			const decision = decisionsState.findLast((entry) => entry.torrentId === body.torrentId)
+			if (!decision) {
+				throw notFound('No decision history for torrent id')
+			}
+			series = decision.item.seriesBaseRaw
+			resolution = decision.item.resolution
+		} else {
+			series = body?.series
+			resolution = body?.resolution
+		}
+		series = series?.trim()
+		resolution = resolution?.trim()
+		if (!series || !resolution) {
+			throw badRequest('Missing series or resolution')
+		}
+
+		const blacklistKey = buildNormalizedKey(deriveSeriesBase(series), resolution)
+		if (!blacklistState.includes(blacklistKey)) {
+			blacklistState.push(blacklistKey)
+		}
+
+		// Retroactive sweep (R3): pending items matching the new key are dropped from the
+		// queue and recorded as blocked. Already-downloaded/approved records are left as-is.
+		let removedPending = 0
+		for (let index = pendingState.length - 1; index >= 0; index -= 1) {
+			const pendingItem = pendingState[index]!
+			const pendingKey = buildNormalizedKey(deriveSeriesBase(pendingItem.seriesKey ?? pendingItem.item.seriesBaseRaw), pendingItem.item.resolution)
+			if (pendingKey !== blacklistKey) {
+				continue
+			}
+			pendingState.splice(index, 1)
+			decisionsState.push({
+				torrentId: pendingItem.torrentId,
+				status: 'blocked',
+				reason: 'series+resolution blacklisted by user',
+				createdAtUtc: new Date().toISOString(),
+				item: pendingItem.item,
+			})
+			removedPending += 1
+		}
+
+		await saveBlacklist(blacklistState)
+		if (removedPending > 0) {
+			await savePending(pendingState)
+			await saveDecisions(decisionsState)
+		}
+		return { success: true, data: { key: blacklistKey, removedPending, items: blacklistState.map(parseBlacklistEntry) } }
+	})
+
 	app.delete('/api/blacklist', async (event) => {
 		const body = await readBody<{ key?: string }>(event).catch(() => undefined)
 		const key = body?.key?.trim()

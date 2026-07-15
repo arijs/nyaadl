@@ -102,6 +102,20 @@ export interface BlacklistResponse {
 
 export type BlacklistListResponse = ApiEnvelope<BlacklistResponse>
 
+export interface BlacklistAddRequest {
+	series?: string
+	resolution?: string
+	torrentId?: string
+}
+
+export interface BlacklistAddResult {
+	key: string
+	removedPending: number
+	items: BlacklistEntry[]
+}
+
+export type BlacklistAddResponse = ApiEnvelope<BlacklistAddResult>
+
 export type ListResponse<T> = ApiEnvelope<T>
 
 export type ReportResponse = ApiEnvelope<DailyReport>

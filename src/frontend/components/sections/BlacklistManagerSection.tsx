@@ -8,6 +8,7 @@ interface BlacklistManagerSectionProps {
 
 export default function BlacklistManagerSection(props: BlacklistManagerSectionProps) {
 	const [collapsed, setCollapsed] = createSignal(false)
+	const [showAddForm, setShowAddForm] = createSignal(false)
 
 	return (
 		<section class="rounded-3xl border border-white/10 bg-slate-950/80 p-6 shadow-lg shadow-black/20 xl:col-span-2">
@@ -18,17 +19,64 @@ export default function BlacklistManagerSection(props: BlacklistManagerSectionPr
 						<p class="mt-1 text-sm text-slate-400">Search and prune series + resolution blocks before the next scrape.</p>
 					</Show>
 				</div>
-				<button
-					type="button"
-					class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-slate-300"
-					onClick={() => setCollapsed((current) => !current)}
-				>
-					{collapsed() ? 'Expand' : 'Collapse'}
-				</button>
+				<div class="flex items-center gap-2">
+					<Show when={!collapsed()}>
+						<button
+							type="button"
+							class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-slate-300"
+							onClick={() => setShowAddForm((current) => !current)}
+						>
+							{showAddForm() ? 'Ocultar bloqueio' : 'Adicionar bloqueio'}
+						</button>
+					</Show>
+					<button
+						type="button"
+						class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-slate-300"
+						onClick={() => setCollapsed((current) => !current)}
+					>
+						{collapsed() ? 'Expand' : 'Collapse'}
+					</button>
+				</div>
 			</div>
 
 			<Show when={!collapsed()}>
 				<div class="mt-5 space-y-3">
+						<Show when={showAddForm()}>
+						<form
+							class="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-white/5 p-3"
+							onSubmit={(event) => {
+								event.preventDefault()
+								void props.blacklistManager.addItem()
+							}}
+						>
+							<input
+								type="text"
+								value={props.blacklistManager.addSeries()}
+								onInput={(event) => props.blacklistManager.setAddSeries(event.currentTarget.value)}
+								placeholder="Série (ex.: grand blue season 3)"
+								class="min-w-56 flex-1 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200 outline-none transition placeholder:text-slate-500 focus:border-amber-300/40"
+							/>
+							<select
+								value={props.blacklistManager.addResolution()}
+								onChange={(event) => props.blacklistManager.setAddResolution(event.currentTarget.value)}
+								class="appearance-none rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200 outline-none transition focus:border-amber-300/40"
+							>
+								<For each={['480p', '720p', '1080p', '2160p', 'unknown']}>
+									{(resolution) => <option class="bg-slate-950 text-slate-100" value={resolution}>{resolution}</option>}
+								</For>
+							</select>
+							<button
+								type="submit"
+								class="rounded-full border border-amber-300/40 bg-amber-300/15 px-3 py-1 text-xs font-medium text-amber-100 transition disabled:cursor-not-allowed disabled:opacity-40"
+								disabled={props.blacklistManager.isAdding()}
+							>
+								{props.blacklistManager.isAdding() ? 'Adicionando...' : 'Adicionar bloqueio'}
+							</button>
+							<Show when={props.blacklistManager.addError()}>
+								<span class="w-full text-xs text-rose-200">{props.blacklistManager.addError()}</span>
+							</Show>
+						</form>
+						</Show>
 					<div class="flex flex-wrap gap-3">
 						<input
 							type="text"
