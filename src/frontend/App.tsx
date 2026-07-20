@@ -9,6 +9,7 @@ import BootstrapDiscoverySection from './components/sections/BootstrapDiscoveryS
 import BlacklistManagerSection from './components/sections/BlacklistManagerSection'
 import ApproveDestinationModal from './components/ui/ApproveDestinationModal'
 import BlacklistConfirmModal from './components/ui/BlacklistConfirmModal'
+import WatchTargetsIssueModal from './components/ui/WatchTargetsIssueModal'
 import { useDashboardScreen } from './hooks/useDashboardScreen'
 
 export default function App() {
@@ -32,6 +33,14 @@ export default function App() {
 						state={modal()}
 						onConfirm={bootstrapWorkflow.confirmApproveWithDestination}
 						onCancel={bootstrapWorkflow.cancelApproveDestination}
+					/>
+				)}
+			</Show>
+			<Show when={bootstrapWorkflow.watchTargetsIssueModal()}>
+				{(issue) => (
+					<WatchTargetsIssueModal
+						issue={issue()}
+						onClose={bootstrapWorkflow.dismissWatchTargetsIssue}
 					/>
 				)}
 			</Show>

@@ -167,6 +167,15 @@ export interface BootstrapDiscoveryResult {
 	title?: string
 	page?: number
 	checkpoint?: LastProcessed
+	watchTargetsIssue?: WatchTargetsIssue
+}
+
+export type WatchTargetsIssueKind = 'no_roots_configured' | 'roots_offline' | 'no_series_found'
+
+export interface WatchTargetsIssue {
+	kind: WatchTargetsIssueKind
+	configuredRoots: number
+	offlineRoots: string[]
 }
 
 export interface BootstrapAutoDecisionSummary {

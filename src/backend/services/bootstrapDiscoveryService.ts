@@ -33,11 +33,13 @@ import {
 	refreshWatchTargets,
 	setBootstrapDiscoveryState,
 	setLastProcessedState,
+	watchRootsState,
+	watchRootStatusesState,
 	watchTargetsState,
 } from './runtimeStateService'
 import { listDecisionTorrentIds, listPendingTorrentIds, saveBootstrapDiscovery, saveDecisions, saveLastProcessed, savePending } from './stateService'
 import { parseTorrentMetainfo } from './torrentMetainfoService'
-import { loadAliases } from './watchlistService'
+import { buildWatchTargetsIssue, loadAliases } from './watchlistService'
 
 interface BootstrapDiscoverStepBody {
 	page?: number
@@ -550,6 +552,13 @@ export async function discoverLastDownloadedCheckpointStep(
 	const qbittorrentFailedIds = new Set(qbittorrentFailuresState.map((item) => item.torrentId))
 
 	if (watchTargetsState.length === 0) {
+		const watchTargetsIssue = buildWatchTargetsIssue(watchRootsState, watchRootStatusesState)
+		const reason =
+			watchTargetsIssue.kind === 'no_roots_configured'
+				? 'No watch folders configured for bootstrap discovery'
+				: watchTargetsIssue.kind === 'roots_offline'
+					? `Watch folders are offline or inaccessible: ${watchTargetsIssue.offlineRoots.join(', ')}`
+					: 'No series folders found inside the configured watch roots'
 		const result: BootstrapDiscoveryResult = {
 			startedAtUtc,
 			finishedAtUtc: new Date().toISOString(),
@@ -567,7 +576,8 @@ export async function discoverLastDownloadedCheckpointStep(
 			autoRejected,
 			alreadyDownloaded,
 			backfilled,
-			reason: 'No watch targets available for bootstrap discovery',
+			reason,
+			watchTargetsIssue,
 		}
 		setBootstrapDiscoveryState(result)
 		await saveBootstrapDiscovery(result)

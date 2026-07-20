@@ -1,7 +1,7 @@
 import { createEffect, createSignal } from 'solid-js'
 import type { Accessor } from 'solid-js'
 import type { FolderOptionsData, StatusResponse } from '../../shared/api'
-import type { BootstrapDiscoveryResult } from '../../shared/types'
+import type { BootstrapDiscoveryResult, WatchTargetsIssue } from '../../shared/types'
 import { getJson, postJson, postJsonBody, requestJson } from '../lib/httpClient'
 import type { BootstrapCursor } from '../types'
 import type { ApproveDestinationState } from '../components/ui/ApproveDestinationModal'
@@ -22,6 +22,7 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 	const [processWholePage, setProcessWholePage] = createSignal(false)
 	const [queueActionErrors, setQueueActionErrors] = createSignal<Record<string, string>>({})
 	const [approveDestinationModal, setApproveDestinationModal] = createSignal<ApproveDestinationState | null>(null)
+	const [watchTargetsIssueModal, setWatchTargetsIssueModal] = createSignal<WatchTargetsIssue | null>(null)
 
 	const normalizeQuery = (value: string | undefined): string => value?.trim().replace(/\s+/g, ' ') ?? ''
 	const getActiveCustomQuery = () => normalizeQuery(options.bootstrap()?.customQuery)
@@ -87,6 +88,15 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 				page: result.currentPage,
 				itemIndex: result.currentItemIndex,
 			})
+			if (result.watchTargetsIssue) {
+				setWatchTargetsIssueModal(result.watchTargetsIssue)
+				options.appendLogEntry({
+					timestampUtc: new Date().toISOString(),
+					kind: 'error',
+					message: result.reason,
+					page: result.currentPage,
+				})
+			}
 			if (typeof nextPage === 'number' && typeof nextItemIndex === 'number') {
 				setBootstrapCursor({ page: nextPage, itemIndex: nextItemIndex, cursorToken: nextCursorToken })
 			} else {
@@ -334,6 +344,8 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 		approveDestinationModal,
 		confirmApproveWithDestination,
 		cancelApproveDestination,
+		watchTargetsIssueModal,
+		dismissWatchTargetsIssue: () => setWatchTargetsIssueModal(null),
 		runBootstrapDiscoveryStep,
 		runDefaultBootstrapDiscovery,
 		submitBootstrapQuery,

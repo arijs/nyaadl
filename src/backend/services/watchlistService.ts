@@ -2,7 +2,7 @@ import { readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { dataRoot, isAliasMapFile, isFolderConfigFile, readJsonFile, writeJsonFileAtomic } from '../storage/jsonStore'
 import { buildCanonicalSeriesKey, buildMatchCandidates, buildNormalizedKey, deriveSeriesBase, extractResolution, normalizeText, sanitizePathSegment } from './normalizeService'
-import type { AliasMapFile, FolderConfigFile, WatchTarget } from '@shared/types'
+import type { AliasMapFile, FolderConfigFile, WatchTarget, WatchTargetsIssue } from '@shared/types'
 
 const folderConfigPath = path.join(dataRoot, 'folders-config.json')
 const aliasesPath = path.join(dataRoot, 'aliases.json')
@@ -190,4 +190,16 @@ export async function scanWatchTargets(): Promise<WatchTarget[]> {
 	}
 
 	return targets.sort((left, right) => left.folderName.localeCompare(right.folderName))
+}
+
+/**
+ * Explains why bootstrap discovery ended up with zero watch targets, so the UI can
+ * tell "no folders configured" apart from "folders are offline/inaccessible" (e.g. an
+ * unmounted network drive) apart from "folders are fine but contain no series".
+ */
+export function buildWatchTargetsIssue(configuredRoots: string[], statuses: WatchRootStatus[]): WatchTargetsIssue {
+	const offlineRoots = statuses.filter((status) => !status.exists || !status.isDirectory).map((status) => status.path)
+	const kind: WatchTargetsIssue['kind'] =
+		configuredRoots.length === 0 ? 'no_roots_configured' : offlineRoots.length > 0 ? 'roots_offline' : 'no_series_found'
+	return { kind, configuredRoots: configuredRoots.length, offlineRoots }
 }
