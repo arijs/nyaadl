@@ -361,8 +361,8 @@ This section lists all items currently waiting for user action, not only the ite
 
 Visible items:
 
-- `Approve all pending`
-- one card per pending item with the torrent title, detected series base name, resolution, source page, queue reason, current status badge, and `Approve`, `Blacklist`, `Skip` actions
+- `Skip all pending` (marks every queued item as skipped without downloading)
+- one card per pending item with the torrent title, detected series base name, resolution, source page, the nyaa row details captured at scrape time (size, published date, seeders, leechers, downloads), queue reason, current status badge, and `Approve`, `Blacklist`, `Skip` actions
 - inline error panel if a queue action failed
 
 Use this section when you want to clear older unresolved items without relying on the latest scraping result card.

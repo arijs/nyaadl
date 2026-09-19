@@ -16,7 +16,7 @@ import { inspectAndClassifyTorrent, savePageSnapshot } from './services/nyaaTorr
 import { parseTorrentMetainfo } from './services/torrentMetainfoService'
 import { loadBlacklist, saveBlacklist, saveBootstrapDiscovery, saveDecisions, saveLastProcessed, savePending, saveQbittorrentSubmitted } from './services/stateService'
 import { buildNormalizedKey, deriveSeriesBase, deriveFolderNameFromTitle } from './services/normalizeService'
-import { listDecisionTorrentIds, listPendingTorrentIds } from './services/stateService'
+import { buildSkippedDecisions, listDecisionTorrentIds, listPendingTorrentIds } from './services/stateService'
 import { buildTorrentHistoryPage } from './services/torrentHistoryService'
 import { buildBlacklistPage, parseBlacklistEntry } from './services/blacklistService'
 import { buildWatchTargetPage } from './services/watchTargetService'
@@ -633,13 +633,12 @@ async function main(): Promise<void> {
 		return { success: true, data: decision }
 	})
 
-	app.post('/api/pending/approve-all', async () => {
-		const approved: DecisionRecord[] = []
-		while (pendingState.length > 0) {
-			const decision = await approvePendingItemByIndex(0)
-			approved.push(decision)
-		}
-		return { success: true, data: { approved, count: approved.length, status: buildStatus() } }
+	app.post('/api/pending/skip-all', async () => {
+		const skipped = buildSkippedDecisions(pendingState.splice(0))
+		decisionsState.push(...skipped)
+		await savePending(pendingState)
+		await saveDecisions(decisionsState)
+		return { success: true, data: { skipped, count: skipped.length, status: buildStatus() } }
 	})
 
 	app.post('/api/pending/:id/blacklist', async (event) => {

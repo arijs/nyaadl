@@ -21,8 +21,8 @@ export function useDashboardActions(options: UseDashboardActionsOptions) {
 		await refreshAfter(postJson('/api/bootstrap/next-page'))
 	}
 
-	async function approveAllPending() {
-		await refreshAfter(postJson('/api/pending/approve-all'))
+	async function skipAllPending() {
+		await refreshAfter(postJson('/api/pending/skip-all'))
 	}
 
 	async function approvePending(torrentId: string) {
@@ -70,7 +70,7 @@ export function useDashboardActions(options: UseDashboardActionsOptions) {
 	return {
 		scrapePageOne,
 		bootstrapNextPage,
-		approveAllPending,
+		skipAllPending,
 		approvePending,
 		blacklistPending,
 		skipPending,

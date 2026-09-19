@@ -43,7 +43,7 @@ export default function PendingQueueSection(props: PendingQueueSectionProps) {
 					</Show>
 				</div>
 				<div class="flex items-center gap-2">
-					<ActionButton label="Approve all pending" onClick={props.dashboardActions.approveAllPending} />
+					<ActionButton label="Skip all pending" onClick={props.dashboardActions.skipAllPending} />
 					<button
 						type="button"
 						class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-slate-300"
@@ -67,6 +67,9 @@ export default function PendingQueueSection(props: PendingQueueSectionProps) {
 									<div class="min-w-0 max-w-full">
 										<p class="break-words text-wrap font-medium text-white">{item.item.title}</p>
 										<p class="mt-1 break-words text-xs text-slate-400">{item.item.seriesBaseRaw} · {item.item.resolution} · page {item.item.page}</p>
+										<p class="mt-1 break-words text-xs text-slate-400">
+											{item.item.sizeText ?? 'n/a'} · {item.item.publishedAtUtc ?? 'n/a'} · <span class="text-emerald-300">seeders {item.item.seeders ?? 'n/a'}</span> · <span class="text-rose-300">leechers {item.item.leechers ?? 'n/a'}</span> · downloads {item.item.downloads ?? 'n/a'}
+										</p>
 										<p class="mt-1 break-words text-xs text-slate-400">{item.reason}</p>
 										<Show when={errorParts}>
 											<div class="mt-2 rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-200">

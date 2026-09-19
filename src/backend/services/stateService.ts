@@ -152,6 +152,16 @@ export function listPendingTorrentIds(items: PendingItem[]): Set<string> {
 	return new Set(items.map((item) => item.torrentId))
 }
 
+export function buildSkippedDecisions(items: PendingItem[], createdAtUtc = new Date().toISOString()): DecisionRecord[] {
+	return items.map((pendingItem) => ({
+		torrentId: pendingItem.torrentId,
+		status: 'skipped',
+		reason: 'skipped by user',
+		createdAtUtc,
+		item: pendingItem.item,
+	}))
+}
+
 export async function loadLastProcessed(): Promise<LastProcessed> {
 	return readJsonFile<LastProcessed>(lastProcessedPath, {
 		lastRunAt: new Date().toISOString(),
