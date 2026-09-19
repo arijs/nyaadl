@@ -2,6 +2,7 @@ import { createSignal, For, Show } from 'solid-js'
 import type { Accessor } from 'solid-js'
 import type { StatusResponse } from '../../../shared/api'
 import type { BootstrapDiscoveryResult, PendingItem } from '../../../shared/types'
+import { isQbittorrentAddSuccess } from '../../../shared/qbittorrent'
 import type { useDashboardActions } from '../../hooks/useDashboardActions'
 import type { useBootstrapWorkflow } from '../../hooks/useBootstrapWorkflow'
 import ActionButton from '../ui/ActionButton'
@@ -53,6 +54,8 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 		void props.bootstrapWorkflow.resolveBootstrapAction(action)
 	}
 	const shownCount = (total: number, expanded: boolean) => (expanded ? total : Math.min(total, previewLimit))
+	// ponytail: full qB body only on failure, for debugging
+	const qbLabel = (text: string | undefined) => (isQbittorrentAddSuccess(text) ? 'Ok' : text)
 	const qbStatusCounts = () => {
 		const entries = [
 			...(props.bootstrap()?.autoApproved ?? []),
@@ -65,7 +68,7 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 			if (!value) {
 				continue
 			}
-			if (value === 'Ok.') {
+			if (isQbittorrentAddSuccess(value)) {
 				ok += 1
 			} else {
 				fail += 1
@@ -220,7 +223,7 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 														<Show when={entry.fileMissing}>
 															<span class="ml-2 font-bold text-rose-300">File missing</span>
 														</Show>
-														<Show when={entry.qbResponseText}> / qB: {entry.qbResponseText}</Show>
+														<Show when={entry.qbResponseText}> / qB: {qbLabel(entry.qbResponseText)}</Show>
 													</p>
 													<Show when={entry.reason}><p class="mt-0.5 text-[11px] text-slate-200/85">{entry.reason}</p></Show>
 												</div>
@@ -249,7 +252,7 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 										<For each={showAllApproved() ? (bootstrap().autoApproved ?? []) : (bootstrap().autoApproved?.slice(0, previewLimit) ?? [])}>
 											{(entry) => (
 												<div class="mt-1 rounded-lg border border-emerald-300/20 bg-emerald-900/20 px-2 py-1">
-													<p class="text-xs text-emerald-100">p{entry.page} #{entry.itemIndex}: {entry.title}<Show when={entry.qbResponseText}> / qB: {entry.qbResponseText}</Show></p>
+													<p class="text-xs text-emerald-100">p{entry.page} #{entry.itemIndex}: {entry.title}<Show when={entry.qbResponseText}> / qB: {qbLabel(entry.qbResponseText)}</Show></p>
 												</div>
 											)}
 										</For>

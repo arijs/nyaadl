@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { readFile } from 'node:fs/promises'
 import type { QbittorrentFailureKind, QbittorrentRuntimeConfig } from '@shared/types'
+import { isQbittorrentAddSuccess } from '@shared/qbittorrent'
 
 const qbittorrentPasswordPath = path.join(process.cwd(), 'qbittorrent password.txt')
 
@@ -169,6 +170,9 @@ export async function addTorrentToQbittorrent(input: AddTorrentInput): Promise<Q
 	}
 
 	const responseText = await response.text().catch(() => '')
+	if (!isQbittorrentAddSuccess(responseText)) {
+		throw new QbittorrentRequestError(`qBittorrent did not accept the torrent${responseText ? `: ${responseText}` : ''}`, 'http', undefined, response.status, responseText)
+	}
 	return {
 		ok: true,
 		status: response.status,
