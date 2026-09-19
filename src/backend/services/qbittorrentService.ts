@@ -7,7 +7,7 @@ const qbittorrentPasswordPath = path.join(process.cwd(), 'qbittorrent password.t
 
 let cachedSidCookie: string | undefined
 const qbittorrentRuntimeState: { baseUrl: string; username: string; password?: string } = {
-	baseUrl: 'http://localhost:7055',
+	baseUrl: 'http://localhost:6055',
 	username: 'admin',
 }
 
@@ -140,7 +140,7 @@ async function postTorrentAdd(form: FormData, cookieHeader?: string): Promise<Re
 			method: 'POST',
 			headers: cookieHeader ? { cookie: cookieHeader } : undefined,
 			body: form,
-			signal: AbortSignal.timeout(7000),
+			signal: AbortSignal.timeout(60_000),
 		})
 	} catch (error) {
 		throw classifyNetworkError(error)
