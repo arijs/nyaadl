@@ -7,7 +7,7 @@ interface NyaaMetaProps {
 	sizeText?: string
 }
 
-// Details button + Nyaa link + list info (category, size) shown next to every torrent.
+// Details button (opens the modal, which also links to Nyaa) + list info (category, size) shown next to every torrent.
 export default function NyaaMeta(props: NyaaMetaProps) {
 	const cached = () => cachedDetailIds().has(props.torrentId)
 	return (
@@ -16,12 +16,10 @@ export default function NyaaMeta(props: NyaaMetaProps) {
 				type="button"
 				onClick={() => openTorrentDetails(props.torrentId)}
 				title={cached() ? 'Details saved — open' : 'Details not downloaded yet — open to fetch'}
-				aria-label={`Torrent ${props.torrentId} details`}
-				class={`text-sm leading-none transition hover:text-white ${cached() ? 'text-emerald-300' : 'text-slate-500'}`}
+				class={`rounded-full border px-2 py-0.5 transition hover:border-sky-300/50 hover:text-white ${cached() ? 'border-sky-300/30 bg-sky-300/10 text-sky-200' : 'border-white/10 bg-white/5 text-slate-300'}`}
 			>
-				ⓘ
+				{cached() ? '📖' : '🔍'} #{props.torrentId}
 			</button>
-			<a href={`https://nyaa.si/view/${props.torrentId}`} target="_blank" rel="noopener noreferrer" class="text-sky-300 hover:underline">nyaa #{props.torrentId} ↗</a>
 			<Show when={props.category}><span>· {props.category}</span></Show>
 			<Show when={props.sizeText}><span>· {props.sizeText}</span></Show>
 		</span>
