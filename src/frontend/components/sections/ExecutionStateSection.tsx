@@ -6,6 +6,7 @@ import type { useDashboardActions } from '../../hooks/useDashboardActions'
 import ActionButton from '../ui/ActionButton'
 import NyaaMeta from '../ui/NyaaMeta'
 import EraiRawsSessionPanel from './EraiRawsSessionPanel'
+import AnidbClientPanel from './AnidbClientPanel'
 
 interface ExecutionStateSectionProps {
 	status: Accessor<StatusResponse | undefined>
@@ -81,6 +82,7 @@ export default function ExecutionStateSection(props: ExecutionStateSectionProps)
 					<ActionButton label="Export today's report" onClick={props.dashboardActions.exportReportForToday} />
 				</div>
 				<EraiRawsSessionPanel status={props.status()?.data.eraiRaws} onSave={props.dashboardActions.saveEraiRawsSession} />
+				<AnidbClientPanel status={props.status()?.data.anidb} onSave={props.dashboardActions.saveAnidbClient} />
 				<Show when={props.status()?.data.qbittorrentFailures.length}>
 					<div class="mt-5 rounded-2xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-100">
 						<div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">

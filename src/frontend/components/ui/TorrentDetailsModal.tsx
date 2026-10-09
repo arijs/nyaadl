@@ -1,0 +1,360 @@
+import { createEffect, createResource, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js'
+import type { Accessor, JSX, Resource } from 'solid-js'
+import type { AnidbDetails, EraiRawsSeriesDetails, MalDetails, SeriesSource, SeriesSourcePayload, TorrentDetailsPayload } from '../../../shared/types'
+import { getJson } from '../../lib/httpClient'
+import { markDetailsCached } from '../../hooks/useTorrentDetails'
+
+interface TorrentDetailsModalProps {
+	torrentId: string
+	onClose: () => void
+}
+
+type Tab = 'nyaa' | SeriesSource
+
+const tabs: Array<{ id: Tab; label: string }> = [
+	{ id: 'nyaa', label: 'Nyaa' },
+	{ id: 'erai', label: 'Erai-raws' },
+	{ id: 'mal', label: 'MyAnimeList' },
+	{ id: 'anidb', label: 'AniDB' },
+]
+
+// A resource that only fetches once its source is truthy (tab opened), with a "refresh=1" re-fetch.
+function lazyResource<S, T>(source: Accessor<S | false | undefined>, url: (key: S) => string): [Resource<T | undefined>, () => void] {
+	let forceRefresh = false
+	const [resource, { refetch }] = createResource(source, async (key) => {
+		const query = forceRefresh ? '?refresh=1' : ''
+		forceRefresh = false
+		return (await getJson<T>(`${url(key)}${query}`)).data
+	})
+	return [resource, () => {
+		forceRefresh = true
+		void refetch()
+	}]
+}
+
+// Reading an errored resource throws: use this outside the Switch that renders the error.
+const settled = <T,>(resource: Resource<T | undefined>): T | undefined => (resource.error || resource.loading ? undefined : resource())
+
+const formatDate = (iso: string | undefined) => (iso ? new Date(iso).toLocaleString() : undefined)
+
+function Field(props: { label: string; children: JSX.Element }) {
+	return (
+		<div class="min-w-0">
+			<dt class="text-[11px] uppercase tracking-wide text-slate-500">{props.label}</dt>
+			<dd class="break-words text-sm text-slate-200">{props.children}</dd>
+		</div>
+	)
+}
+
+function Section(props: { title: string; children: JSX.Element }) {
+	return (
+		<section class="mt-5">
+			<h4 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{props.title}</h4>
+			{props.children}
+		</section>
+	)
+}
+
+function SeriesImage(props: { slug: string; site: SeriesSource; version?: string }) {
+	const [failed, setFailed] = createSignal(false)
+	return (
+		<Show when={!failed()}>
+			<img
+				src={`/api/series/${props.slug}/images/${props.site}?v=${encodeURIComponent(props.version ?? '')}`}
+				alt=""
+				onError={() => setFailed(true)}
+				class="w-36 shrink-0 self-start rounded-2xl border border-white/10 object-cover"
+			/>
+		</Show>
+	)
+}
+
+// Loading / error / empty states shared by every tab, plus the refresh button.
+function TabState<T>(props: { resource: Resource<T | undefined>; onRefresh: () => void; fetchedAtUtc?: string; children: (data: T) => JSX.Element }) {
+	return (
+		<>
+			<div class="mb-3 flex items-center justify-end gap-3 text-xs text-slate-500">
+				<Show when={props.fetchedAtUtc}>
+					<span>Saved {formatDate(props.fetchedAtUtc)}</span>
+				</Show>
+				<button type="button" disabled={props.resource.loading} onClick={() => props.onRefresh()} class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-200 transition hover:border-amber-300/40 disabled:opacity-50">
+					Refresh
+				</button>
+			</div>
+			<Switch>
+				<Match when={props.resource.loading}>
+					<p class="py-10 text-center text-sm text-slate-400">Fetching…</p>
+				</Match>
+				<Match when={props.resource.error}>
+					<p class="rounded-2xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-100">
+						{props.resource.error instanceof Error ? props.resource.error.message : String(props.resource.error)}
+					</p>
+				</Match>
+				<Match when={settled(props.resource)}>
+					{(data) => props.children(data())}
+				</Match>
+			</Switch>
+		</>
+	)
+}
+
+function NyaaTab(props: { detail: TorrentDetailsPayload['nyaa'] }) {
+	const d = () => props.detail
+	return (
+		<>
+			<h3 class="text-base font-semibold text-white">{d().title}</h3>
+			<dl class="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+				<Field label="Category">{d().category ?? '—'}</Field>
+				<Field label="Published">{formatDate(d().publishedAtUtc) ?? '—'}</Field>
+				<Field label="Submitter">{d().submitter ?? '—'}{d().submitterRank ? ` (${d().submitterRank})` : ''}</Field>
+				<Field label="Size">{d().sizeText ?? '—'}</Field>
+				<Field label="Seeders / Leechers">{d().seeders ?? '—'} / {d().leechers ?? '—'}</Field>
+				<Field label="Completed">{d().completed ?? '—'}</Field>
+				<Field label="Info hash"><span class="font-mono text-xs">{d().infoHash ?? '—'}</span></Field>
+				<Field label="Links">
+					<span class="flex flex-wrap gap-2">
+						<a href={d().url} target="_blank" rel="noopener noreferrer" class="text-sky-300 hover:underline">Nyaa ↗</a>
+						<Show when={d().magnet}><a href={d().magnet} class="text-sky-300 hover:underline">Magnet</a></Show>
+						<Show when={d().information}><a href={d().information} target="_blank" rel="noopener noreferrer" class="text-sky-300 hover:underline">Information ↗</a></Show>
+					</span>
+				</Field>
+			</dl>
+			<Show when={d().descriptionMarkdown}>
+				<Section title="Description">
+					<pre class="max-h-72 overflow-auto whitespace-pre-wrap rounded-2xl border border-white/10 bg-black/20 p-3 text-xs text-slate-300">{d().descriptionMarkdown}</pre>
+				</Section>
+			</Show>
+			<Section title={`Files (${d().files.length})`}>
+				<ul class="max-h-48 space-y-1 overflow-auto text-xs text-slate-300">
+					<For each={d().files}>{(file) => <li class="flex justify-between gap-3"><span class="break-all">{file.path}</span><span class="shrink-0 text-slate-500">{file.sizeText}</span></li>}</For>
+				</ul>
+			</Section>
+			<Show when={d().comments.length}>
+				<Section title={`Comments (${d().comments.length})`}>
+					<ul class="space-y-2 text-xs">
+						<For each={d().comments}>{(comment) => (
+							<li class="rounded-xl border border-white/10 bg-white/5 p-2">
+								<span class="font-medium text-slate-200">{comment.user}</span>
+								<span class="ml-2 text-slate-500">{formatDate(comment.postedAtUtc)}</span>
+								<p class="mt-1 whitespace-pre-wrap text-slate-300">{comment.text}</p>
+							</li>
+						)}</For>
+					</ul>
+				</Section>
+			</Show>
+		</>
+	)
+}
+
+function EraiTab(props: { slug: string; details: EraiRawsSeriesDetails }) {
+	const series = () => props.details.series
+	return (
+		<>
+			<div class="flex gap-4">
+				<SeriesImage slug={props.slug} site="erai" version={series().fetchedAtUtc} />
+				<div class="min-w-0">
+					<h3 class="text-base font-semibold text-white">{series().title}</h3>
+					<p class="mt-2 whitespace-pre-wrap text-sm text-slate-300">{series().synopsis}</p>
+					<div class="mt-3 flex flex-wrap gap-2 text-xs">
+						<a href={series().url} target="_blank" rel="noopener noreferrer" class="text-sky-300 hover:underline">erai-raws ↗</a>
+						<For each={series().links}>{(link) => <a href={link.url} target="_blank" rel="noopener noreferrer" class="text-sky-300 hover:underline">{link.label} ↗</a>}</For>
+					</div>
+				</div>
+			</div>
+			<Section title={`Latest releases (${props.details.releases.length})`}>
+				<div class="overflow-x-auto">
+					<table class="w-full text-left text-xs text-slate-300">
+						<thead class="text-slate-500"><tr><th class="py-1 pr-2">Type</th><th class="pr-2">Release</th><th class="pr-2">Date</th><th class="pr-2">Subtitles</th><th>Variants</th></tr></thead>
+						<tbody>
+							<For each={props.details.releases}>{(release) => (
+								<tr class="border-t border-white/5 align-top">
+									<td class="py-1 pr-2" title={release.type === 'E' ? 'Encode (HEVC)' : release.type === 'A' ? 'Episode' : undefined}>{release.type}</td>
+									<td class="pr-2"><a href={release.url} target="_blank" rel="noopener noreferrer" class="hover:underline">{release.title}</a></td>
+									<td class="whitespace-nowrap pr-2">{release.releasedAt}</td>
+									<td class="pr-2 uppercase text-slate-400">{release.subtitles.join(' ')}</td>
+									<td class="whitespace-nowrap">{release.variants.map((variant) => `${variant.resolution} ${variant.sizeText ?? ''}`.trim()).join(' · ')}</td>
+								</tr>
+							)}</For>
+						</tbody>
+					</table>
+				</div>
+			</Section>
+		</>
+	)
+}
+
+function MalTab(props: { slug: string; details: MalDetails }) {
+	const d = () => props.details
+	const [playing, setPlaying] = createSignal<string>()
+	return (
+		<>
+			<div class="flex gap-4">
+				<SeriesImage slug={props.slug} site="mal" version={d().fetchedAtUtc} />
+				<div class="min-w-0">
+					<h3 class="text-base font-semibold text-white">{d().title}</h3>
+					<Show when={d().englishTitle}><p class="text-sm text-slate-400">{d().englishTitle}</p></Show>
+					<div class="mt-2 flex flex-wrap gap-2 text-xs">
+						<For each={[['Score', d().score], ['Ranked', d().rank], ['Popularity', d().popularity], ['Members', d().members]].filter(([, value]) => value)}>
+							{([label, value]) => <span class="rounded-full border border-white/10 bg-white/5 px-2 py-0.5"><span class="text-slate-500">{label}</span> <span class="text-slate-100">{value}</span></span>}
+						</For>
+						<a href={d().url} target="_blank" rel="noopener noreferrer" class="text-sky-300 hover:underline">MAL ↗</a>
+					</div>
+					<dl class="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3">
+						<For each={d().info}>{(entry) => <Field label={entry.label}>{entry.value}</Field>}</For>
+					</dl>
+				</div>
+			</div>
+			<Show when={d().videos.length}>
+				<Section title={`Trailers (${d().videos.length})`}>
+					<Show when={playing()}>
+						{(youtubeId) => (
+							<iframe
+								src={`https://www.youtube-nocookie.com/embed/${youtubeId()}?autoplay=1`}
+								title="Trailer"
+								allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+								allowfullscreen
+								class="mb-3 aspect-video w-full rounded-2xl border border-white/10"
+							/>
+						)}
+					</Show>
+					<div class="flex gap-3 overflow-x-auto pb-1">
+						<For each={d().videos}>{(video) => (
+							<button type="button" onClick={() => setPlaying(video.youtubeId)} class={`w-40 shrink-0 text-left text-xs ${playing() === video.youtubeId ? 'text-amber-200' : 'text-slate-300'}`}>
+								<img src={`https://i.ytimg.com/vi/${video.youtubeId}/mqdefault.jpg`} alt="" class="aspect-video w-full rounded-xl border border-white/10 object-cover" />
+								<span class="mt-1 block truncate">▶ {video.title}</span>
+							</button>
+						)}</For>
+					</div>
+				</Section>
+			</Show>
+			<Show when={d().synopsis}>
+				<Section title="Synopsis">
+					<p class="whitespace-pre-wrap text-sm text-slate-300">{d().synopsis}</p>
+				</Section>
+			</Show>
+		</>
+	)
+}
+
+function AnidbTab(props: { slug: string; details: AnidbDetails }) {
+	const d = () => props.details
+	const mainTitle = () => d().titles.find((title) => title.type === 'main')?.title ?? d().titles[0]?.title ?? `AniDB ${d().aid}`
+	return (
+		<>
+			<div class="flex gap-4">
+				<SeriesImage slug={props.slug} site="anidb" version={d().fetchedAtUtc} />
+				<div class="min-w-0">
+					<h3 class="text-base font-semibold text-white">{mainTitle()}</h3>
+					<p class="text-xs text-slate-400">
+						{d().titles.filter((title) => title.type === 'official' || title.type === 'synonym').map((title) => `${title.title} (${title.lang})`).join(' · ')}
+					</p>
+					<dl class="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3">
+						<Field label="Type">{d().type ?? '—'}</Field>
+						<Field label="Episodes">{d().episodeCount ?? '—'}</Field>
+						<Field label="Aired">{d().startDate ?? '?'} → {d().endDate ?? '?'}</Field>
+						<For each={d().ratings}>{(rating) => <Field label={`Rating (${rating.kind})`}>{rating.value}{rating.count ? ` · ${rating.count} votes` : ''}</Field>}</For>
+					</dl>
+					<div class="mt-3 flex flex-wrap gap-1.5 text-[11px]">
+						<For each={d().tags}>{(tag) => <span class="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-slate-300">{tag.name}</span>}</For>
+						<a href={d().url} target="_blank" rel="noopener noreferrer" class="text-sky-300 hover:underline">AniDB ↗</a>
+					</div>
+				</div>
+			</div>
+			<Show when={d().description}>
+				<Section title="Description">
+					<p class="whitespace-pre-wrap text-sm text-slate-300">{d().description}</p>
+				</Section>
+			</Show>
+		</>
+	)
+}
+
+function MissingLink(props: { reason?: string }) {
+	return <p class="py-10 text-center text-sm text-slate-400">{props.reason ?? 'Nothing to show.'}</p>
+}
+
+export default function TorrentDetailsModal(props: TorrentDetailsModalProps) {
+	const [tab, setTab] = createSignal<Tab>('nyaa')
+	const [opened, setOpened] = createSignal<ReadonlySet<Tab>>(new Set<Tab>(['nyaa']))
+	const selectTab = (next: Tab) => {
+		setTab(next)
+		setOpened((previous) => new Set(previous).add(next))
+	}
+
+	const [nyaa, refreshNyaa] = lazyResource<string, TorrentDetailsPayload>(() => props.torrentId, (id) => `/api/torrents/${id}/details`)
+	const slug = () => settled(nyaa)?.seriesSlug
+	createEffect(() => {
+		if (settled(nyaa)) {
+			markDetailsCached(props.torrentId)
+		}
+	})
+	// Each series tab fetches the first time it's opened (never on modal open).
+	const seriesSource = (source: SeriesSource) => () => (opened().has(source) ? slug() : false)
+	const [erai, refreshErai] = lazyResource<string, SeriesSourcePayload<EraiRawsSeriesDetails>>(seriesSource('erai'), (key) => `/api/series/${key}/erai`)
+	const [mal, refreshMal] = lazyResource<string, SeriesSourcePayload<MalDetails>>(seriesSource('mal'), (key) => `/api/series/${key}/mal`)
+	const [anidb, refreshAnidb] = lazyResource<string, SeriesSourcePayload<AnidbDetails>>(seriesSource('anidb'), (key) => `/api/series/${key}/anidb`)
+
+	const onKeyDown = (event: KeyboardEvent) => {
+		if (event.key === 'Escape') {
+			props.onClose()
+		}
+	}
+	onMount(() => document.addEventListener('keydown', onKeyDown))
+	onCleanup(() => document.removeEventListener('keydown', onKeyDown))
+
+	return (
+		<div class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm" onClick={(event) => event.target === event.currentTarget && props.onClose()}>
+			<div class="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-3xl border border-white/10 bg-slate-950 p-6 shadow-2xl shadow-black/40">
+				<div class="flex items-center justify-between gap-4">
+					<div class="flex flex-wrap gap-2">
+						<For each={tabs}>{(entry) => {
+							const disabled = () => entry.id !== 'nyaa' && !slug()
+							return (
+								<button
+									type="button"
+									disabled={disabled()}
+									title={disabled() ? (nyaa.loading ? 'Waiting for Nyaa details' : 'Not an erai-raws torrent: no series page to follow') : undefined}
+									onClick={() => selectTab(entry.id)}
+									class={`rounded-full border px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${tab() === entry.id ? 'border-sky-500/40 bg-sky-500/10 text-sky-100' : 'border-white/10 bg-white/5 text-slate-300 hover:border-white/20'}`}
+								>
+									{entry.label}
+								</button>
+							)
+						}}</For>
+					</div>
+					<button type="button" onClick={() => props.onClose()} aria-label="Close" class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-slate-300 hover:text-white">✕</button>
+				</div>
+				<div class="mt-4 min-h-0 overflow-y-auto pr-1">
+					<Switch>
+						<Match when={tab() === 'nyaa'}>
+							<TabState resource={nyaa} onRefresh={refreshNyaa} fetchedAtUtc={settled(nyaa)?.nyaa.fetchedAtUtc}>
+								{(data) => <NyaaTab detail={data.nyaa} />}
+							</TabState>
+						</Match>
+						<Match when={tab() === 'erai' && slug()}>
+							{(key) => (
+								<TabState resource={erai} onRefresh={refreshErai} fetchedAtUtc={settled(erai)?.data?.series.fetchedAtUtc}>
+									{(payload) => (payload.data ? <EraiTab slug={key()} details={payload.data} /> : <MissingLink reason={payload.reason} />)}
+								</TabState>
+							)}
+						</Match>
+						<Match when={tab() === 'mal' && slug()}>
+							{(key) => (
+								<TabState resource={mal} onRefresh={refreshMal} fetchedAtUtc={settled(mal)?.data?.fetchedAtUtc}>
+									{(payload) => (payload.data ? <MalTab slug={key()} details={payload.data} /> : <MissingLink reason={payload.reason} />)}
+								</TabState>
+							)}
+						</Match>
+						<Match when={tab() === 'anidb' && slug()}>
+							{(key) => (
+								<TabState resource={anidb} onRefresh={refreshAnidb} fetchedAtUtc={settled(anidb)?.data?.fetchedAtUtc}>
+									{(payload) => (payload.data ? <AnidbTab slug={key()} details={payload.data} /> : <MissingLink reason={payload.reason} />)}
+								</TabState>
+							)}
+						</Match>
+					</Switch>
+				</div>
+			</div>
+		</div>
+	)
+}

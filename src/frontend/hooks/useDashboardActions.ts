@@ -52,6 +52,10 @@ export function useDashboardActions(options: UseDashboardActionsOptions) {
 		await refreshAfter(postJsonBody('/api/erai-raws/session', session))
 	}
 
+	async function saveAnidbClient(client: { client: string; clientver: string }) {
+		await refreshAfter(postJsonBody('/api/anidb/client', client))
+	}
+
 	async function suppressQbittorrentFailure(torrentId: string) {
 		await refreshAfter(postJson(`/api/qbittorrent/failures/${torrentId}/suppress`))
 	}
@@ -81,6 +85,7 @@ export function useDashboardActions(options: UseDashboardActionsOptions) {
 		retryQbittorrentFailure,
 		saveQbittorrentConfig,
 		saveEraiRawsSession,
+		saveAnidbClient,
 		suppressQbittorrentFailure,
 		exportReportForToday,
 	}

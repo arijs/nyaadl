@@ -1,4 +1,4 @@
-import { Show } from 'solid-js'
+import { onMount, Show } from 'solid-js'
 import ExecutionStateSection from './components/sections/ExecutionStateSection'
 import HeroSection from './components/sections/HeroSection'
 import PendingQueueSection from './components/sections/PendingQueueSection'
@@ -10,7 +10,9 @@ import BlacklistManagerSection from './components/sections/BlacklistManagerSecti
 import ApproveDestinationModal from './components/ui/ApproveDestinationModal'
 import BlacklistConfirmModal from './components/ui/BlacklistConfirmModal'
 import WatchTargetsIssueModal from './components/ui/WatchTargetsIssueModal'
+import TorrentDetailsModal from './components/ui/TorrentDetailsModal'
 import { useDashboardScreen } from './hooks/useDashboardScreen'
+import { closeTorrentDetails, detailsTorrentId, loadCachedDetailIds } from './hooks/useTorrentDetails'
 
 export default function App() {
 	const {
@@ -24,6 +26,7 @@ export default function App() {
 		dashboardActions,
 		bootstrapWorkflow,
 	} = useDashboardScreen()
+	onMount(() => void loadCachedDetailIds())
 
 	return (
 		<div class="min-h-screen bg-[radial-gradient(circle_at_top,rgba(255,215,0,0.18),transparent_35%),linear-gradient(180deg,#0f172a_0%,#111827_48%,#020617_100%)] text-slate-100">
@@ -43,6 +46,9 @@ export default function App() {
 						onClose={bootstrapWorkflow.dismissWatchTargetsIssue}
 					/>
 				)}
+			</Show>
+			<Show when={detailsTorrentId()} keyed>
+				{(torrentId) => <TorrentDetailsModal torrentId={torrentId} onClose={closeTorrentDetails} />}
 			</Show>
 			<Show when={torrentHistoryFilter.blacklistModal()}>
 				{(modal) => (
