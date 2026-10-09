@@ -23,6 +23,7 @@ const persistedItemKeys = [
 	'downloadUrl',
 	'page',
 	'publishedAtUtc',
+	'category',
 	'sizeText',
 	'seeders',
 	'leechers',

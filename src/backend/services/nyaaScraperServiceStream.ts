@@ -46,6 +46,10 @@ function parseRow(rowNode: unknown, page: number, elAdapter: AdapterLike): Torre
 	timestampCellMatcher.name('td')
 	timestampCellMatcher.attr(['data-timestamp', null])
 
+	const categoryLinkMatcher = new TreeMatcher(elAdapter as unknown as UnknownRecord)
+	categoryLinkMatcher.name('a')
+	categoryLinkMatcher.attr(['href', /^\/\?c=\d+_\d+$/])
+
 	const viewAnchor = nodeFindFirstDescendant({root: rowNode, elAdapter, matcher: viewLinkMatcher as unknown as UnknownRecord})
 	const downloadAnchor = nodeFindFirstDescendant({root: rowNode, elAdapter, matcher: downloadLinkMatcher as unknown as UnknownRecord})
 	if (!viewAnchor || !downloadAnchor) {
@@ -65,6 +69,8 @@ function parseRow(rowNode: unknown, page: number, elAdapter: AdapterLike): Torre
 
 	const titleValue = nodeGetAttr({node: viewAnchor, elAdapter, targetName: 'title'}) ?? nodeExtractText({node: viewAnchor, elAdapter})
 	const title = sanitizePathSegment(titleValue)
+	const categoryAnchor = nodeFindFirstDescendant({root: rowNode, elAdapter, matcher: categoryLinkMatcher as unknown as UnknownRecord})
+	const category = categoryAnchor ? nodeGetAttr({node: categoryAnchor, elAdapter, targetName: 'title'}) ?? undefined : undefined
 	const texts = nodeExtractNodeTexts({node: rowNode, elAdapter}) as string[]
 	const timestampCell = nodeFindFirstDescendant({root: rowNode, elAdapter, matcher: timestampCellMatcher as unknown as UnknownRecord})
 	const publishedAt = timestampCell ? nodeGetAttr({node: timestampCell, elAdapter, targetName: 'data-timestamp'}) : undefined
@@ -83,6 +89,7 @@ function parseRow(rowNode: unknown, page: number, elAdapter: AdapterLike): Torre
 		downloadUrl,
 		page,
 		publishedAtUtc,
+		category,
 		sizeText,
 		seeders,
 		leechers,

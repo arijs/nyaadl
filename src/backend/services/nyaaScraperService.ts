@@ -34,6 +34,7 @@ function parseRow($: CheerioAPI, $row: Cheerio<Element>, page: number): TorrentI
 	const texts = extractRowText($, $row)
 	const publishedAt = $row.find('td[data-timestamp]').first().attr('data-timestamp')
 	const publishedAtUtc = publishedAt ? new Date(Number(publishedAt) * 1000).toISOString() : undefined
+	const category = $row.find('a[href^="/?c="]').first().attr('title')
 	const sizeText = texts.find((text) => /[0-9]+(?:\.[0-9]+)?\s*(?:KiB|MiB|GiB|TiB)/i.test(text))
 	const numericCells = texts.filter((text) => /^\d+$/.test(text))
 	const seeders = numericCells.length > 0 ? Number(numericCells[0]) : undefined
@@ -48,6 +49,7 @@ function parseRow($: CheerioAPI, $row: Cheerio<Element>, page: number): TorrentI
 		downloadUrl,
 		page,
 		publishedAtUtc,
+		category,
 		sizeText,
 		seeders,
 		leechers,

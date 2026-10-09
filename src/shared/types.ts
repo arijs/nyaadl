@@ -12,6 +12,7 @@ export interface TorrentItem {
 	downloadUrl: string
 	page: number
 	publishedAtUtc?: string
+	category?: string
 	sizeText?: string
 	seeders?: number
 	leechers?: number
