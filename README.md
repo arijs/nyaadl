@@ -68,6 +68,7 @@ bun run index.ts
 - `data/decisions/YYYY-MM.jsonl` stores the decision history, one JSON record per line, split by the month of `createdAtUtc`. The history is append-only: each save appends only the new records to the current month's file. A legacy `data/decisions.json` is migrated automatically on startup and renamed to `decisions.json.bak`. Invalid lines (e.g. a line truncated by a crash) are skipped on load and kept in `YYYY-MM.jsonl.rejected`.
 - `data/qbittorrent-failures.json` stores qBittorrent submission failures that can be retried or suppressed.
 - `data/qbittorrent-submitted.json` stores torrent IDs that were successfully submitted (or explicitly suppressed) so discovery backfill does not retry forever.
+- `data/YYYY-MM/<torrentId>.json` stores what the Nyaa `/view/<torrentId>` page shows (category, submitter, info hash, magnet, description, file list, comments, ...). It is fetched once per torrent when it is classified, in the folder of the month it was processed. A failed fetch is only logged and never blocks classification.
 - Scraped snapshots and downloaded torrents are stored under `torrents/page-YYYY-MM-DD-N/`.
 
 Example initial file:
