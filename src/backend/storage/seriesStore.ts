@@ -28,6 +28,12 @@ export async function writeSeriesJson<T>(slug: string, name: string, value: T, r
 	await writeJsonFileAtomic(path.join(seriesDir(slug, root), `${name}.json`), value)
 }
 
+// Which of the given sources already have their <name>.json saved (drives the "not downloaded yet" tab markers).
+export async function listSavedSeriesSources<T extends string>(slug: string, names: readonly T[], root = seriesRoot): Promise<T[]> {
+	const files = new Set(await readdir(seriesDir(slug, root)).catch(() => []))
+	return names.filter((name) => files.has(`${name}.json`))
+}
+
 // Raw source payloads (e.g. anidb.xml) kept so they can be re-parsed without another request.
 export async function readSeriesText(slug: string, fileName: string, root = seriesRoot): Promise<string | undefined> {
 	return readFile(path.join(seriesDir(slug, root), fileName), 'utf8').catch(() => undefined)

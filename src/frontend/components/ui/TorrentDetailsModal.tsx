@@ -450,6 +450,12 @@ export default function TorrentDetailsModal(props: TorrentDetailsModalProps) {
 	const [erai, refreshErai] = lazyResource<string, SeriesSourcePayload<EraiRawsSeriesDetails>>(seriesSource('erai'), (key) => `/api/series/${key}/erai`)
 	const [mal, refreshMal] = lazyResource<string, SeriesSourcePayload<MalDetails>>(seriesSource('mal'), (key) => `/api/series/${key}/mal`)
 	const [anidb, refreshAnidb] = lazyResource<string, SeriesSourcePayload<AnidbDetails>>(seriesSource('anidb'), (key) => `/api/series/${key}/anidb`)
+	// MAL/AniDB tabs show 🔍 (same as the list button) until their data is on disk: saved earlier, or fetched by opening the tab.
+	const fetchedNow = (source: 'mal' | 'anidb') => Boolean(source === 'mal' ? settled(mal)?.data : settled(anidb)?.data)
+	const notDownloaded = (id: Tab) => (id === 'mal' || id === 'anidb')
+		&& Boolean(slug())
+		&& !settled(nyaa)?.savedSources?.includes(id)
+		&& !fetchedNow(id)
 
 	// Featured image shown over the whole modal (tabs included); a click anywhere closes it.
 	const [preview, setPreview] = createSignal<string>()
@@ -485,11 +491,14 @@ export default function TorrentDetailsModal(props: TorrentDetailsModalProps) {
 								<button
 									type="button"
 									disabled={disabled()}
-									title={disabled() ? (nyaa.loading ? 'Waiting for Nyaa details' : 'Not an erai-raws torrent: no series page to follow') : undefined}
+									title={disabled()
+										? (nyaa.loading ? 'Waiting for Nyaa details' : 'Not an erai-raws torrent: no series page to follow')
+										: notDownloaded(entry.id) ? 'Not downloaded yet — opening this tab fetches it' : undefined}
 									onClick={() => selectTab(entry.id)}
 									class={`rounded-full border px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${tab() === entry.id ? 'border-sky-500/40 bg-sky-500/10 text-sky-100' : 'border-white/10 bg-white/5 text-slate-300 hover:border-white/20'}`}
 								>
 									{entry.label}
+									<Show when={notDownloaded(entry.id)}><span class="ml-1.5">🔍</span></Show>
 								</button>
 							)
 						}}</For>

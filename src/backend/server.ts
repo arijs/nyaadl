@@ -13,7 +13,7 @@ import { EraiRawsAuthError, eraiSeriesSlug, getEraiRawsStatus, getEraiSeries, sa
 import { getMalDetails } from './services/malService'
 import { getAnidbClientStatus, getAnidbDetails, saveAnidbClient } from './services/anidbService'
 import { getNyaaDetail, listCachedNyaaDetailIds } from './services/nyaaDetailService'
-import { findSeriesImage, isSafeSeriesKey } from './storage/seriesStore'
+import { findSeriesImage, isSafeSeriesKey, listSavedSeriesSources } from './storage/seriesStore'
 // If nyaaScraperServiceStream fails, you can use the cheerio version below
 // import { scrapeNyaaPage } from './services/nyaaScraperService'
 import { scrapeNyaaPage } from './services/nyaaScraperServiceStream'
@@ -397,7 +397,9 @@ async function main(): Promise<void> {
 				refresh: getQuery(event).refresh === '1',
 				processedAtUtc: decisionsState.find((decision) => decision.torrentId === torrentId)?.createdAtUtc,
 			})
-			return { success: true, data: { nyaa, seriesSlug: eraiSeriesSlug(nyaa.information) ?? undefined } satisfies TorrentDetailsPayload }
+			const seriesSlug = eraiSeriesSlug(nyaa.information) ?? undefined
+			const savedSources = seriesSlug ? await listSavedSeriesSources(seriesSlug, ['erai', 'mal', 'anidb'] as const) : undefined
+			return { success: true, data: { nyaa, seriesSlug, savedSources } satisfies TorrentDetailsPayload }
 		} catch (error) {
 			throw upstreamError(error)
 		}

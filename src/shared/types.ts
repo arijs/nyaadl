@@ -266,6 +266,8 @@ export interface TorrentDetailsPayload {
 	nyaa: NyaaTorrentDetail
 	// Set when `information` points at an erai-raws series: key of data/series/<slug>/.
 	seriesSlug?: string
+	// Series sources already saved on disk (the others get a "not downloaded yet" marker on their tab).
+	savedSources?: SeriesSource[]
 }
 
 // data/series/<slug>/erai.json

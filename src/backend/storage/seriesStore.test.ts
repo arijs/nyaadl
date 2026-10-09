@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { findSeriesImage, isSafeSeriesKey, readSeriesJson, saveSeriesImage, writeSeriesJson } from './seriesStore'
+import { findSeriesImage, isSafeSeriesKey, listSavedSeriesSources, readSeriesJson, saveSeriesImage, writeSeriesJson } from './seriesStore'
 
 const imageResponse = (contentType: string) => (async () => new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': contentType } })) as unknown as typeof fetch
 
@@ -12,6 +12,15 @@ test('series JSON files round-trip inside data/series/<slug>/', async () => {
 	assert.equal(await readSeriesJson('chii-fuyo', 'mal', root), undefined)
 	await writeSeriesJson('chii-fuyo', 'mal', { title: 'Chii Fuyo' }, root)
 	assert.deepEqual(await readSeriesJson('chii-fuyo', 'mal', root), { title: 'Chii Fuyo' })
+})
+
+test('listSavedSeriesSources reports which source files exist', async () => {
+	const root = mkdtempSync(join(tmpdir(), 'series-'))
+	const sources = ['erai', 'mal', 'anidb'] as const
+	assert.deepEqual(await listSavedSeriesSources('chii-fuyo', sources, root), [])
+	await writeSeriesJson('chii-fuyo', 'erai', {}, root)
+	await writeSeriesJson('chii-fuyo', 'anidb', {}, root)
+	assert.deepEqual(await listSavedSeriesSources('chii-fuyo', sources, root), ['erai', 'anidb'])
 })
 
 test('saveSeriesImage names the file by content-type and replaces the previous one', async () => {
