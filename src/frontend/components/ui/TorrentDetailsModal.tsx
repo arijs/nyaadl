@@ -1,8 +1,9 @@
-import { createEffect, createResource, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js'
+import { createEffect, createMemo, createResource, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js'
 import type { Accessor, JSX, Resource } from 'solid-js'
 import type { AnidbDetails, EraiRawsSeriesDetails, MalDetails, SeriesSource, SeriesSourcePayload, TorrentDetailsPayload } from '../../../shared/types'
 import { getJson } from '../../lib/httpClient'
 import { markDetailsCached } from '../../hooks/useTorrentDetails'
+import { featuredReviews, sortByReactions } from '../../lib/featuredReviews'
 
 interface TorrentDetailsModalProps {
 	torrentId: string
@@ -46,10 +47,13 @@ function Field(props: { label: string; children: JSX.Element }) {
 	)
 }
 
-function Section(props: { title: string; children: JSX.Element }) {
+function Section(props: { title: string; action?: JSX.Element; children: JSX.Element }) {
 	return (
 		<section class="mt-5">
-			<h4 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{props.title}</h4>
+			<div class="mb-2 flex items-center justify-between gap-3">
+				<h4 class="text-xs font-semibold uppercase tracking-wide text-slate-400">{props.title}</h4>
+				{props.action}
+			</div>
 			{props.children}
 		</section>
 	)
@@ -213,6 +217,9 @@ function ExpandableCard(props: { header: JSX.Element; text: string }) {
 function MalTab(props: { slug: string; details: MalDetails }) {
 	const d = () => props.details
 	const [playing, setPlaying] = createSignal<MalDetails['videos'][number]>()
+	const [showAllReviews, setShowAllReviews] = createSignal(false)
+	// One review per verdict (Recommended / Mixed / Not recommended) up front; the rest behind "Show all".
+	const featured = createMemo(() => featuredReviews(d().reviews ?? []))
 	return (
 		<>
 			<div class="flex gap-4">
@@ -265,10 +272,17 @@ function MalTab(props: { slug: string; details: MalDetails }) {
 					<p class="whitespace-pre-wrap text-sm text-slate-300">{d().synopsis}</p>
 				</Section>
 			</Show>
-			<Section title={`Reviews (${d().reviews?.length ?? 0}, first page)`}>
+			<Section
+				title={`Reviews (${showAllReviews() ? d().reviews?.length ?? 0 : `${featured().length} of ${d().reviews?.length ?? 0}`} · first page · most reactions first)`}
+				action={
+					<Show when={(d().reviews?.length ?? 0) > featured().length}>
+						<PillButton label={showAllReviews() ? 'Show less' : 'Show all'} onClick={() => setShowAllReviews((current) => !current)} />
+					</Show>
+				}
+			>
 				<Show when={d().reviews} fallback={<p class="text-xs text-slate-500">Saved before reviews were collected — click Refresh to fetch them.</p>}>
 					<ul class="space-y-2">
-						<For each={d().reviews}>{(review) => (
+						<For each={showAllReviews() ? sortByReactions(d().reviews ?? []) : featured()}>{(review) => (
 							<ExpandableCard
 								text={review.text}
 								header={
