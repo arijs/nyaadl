@@ -221,10 +221,6 @@ export interface PendingFile {
 	items: PendingItem[]
 }
 
-export interface DecisionsFile {
-	items: DecisionRecord[]
-}
-
 export interface QbittorrentFailuresFile {
 	items: QbittorrentFailureItem[]
 }

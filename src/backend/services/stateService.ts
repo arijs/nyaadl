@@ -4,7 +4,6 @@ import type {
 	BootstrapDiscoveryFile,
 	BootstrapDiscoveryResult,
 	DecisionRecord,
-	DecisionsFile,
 	LastProcessed,
 	PendingFile,
 	PendingItem,
@@ -19,7 +18,6 @@ import {
 	isAliasMapFile,
 	isBlacklistFile,
 	isBootstrapDiscoveryFile,
-	isDecisionsFile,
 	isFolderConfigFile,
 	isLastProcessedFile,
 	isPendingFile,
@@ -27,12 +25,13 @@ import {
 	readJsonFile,
 	writeJsonFileAtomic,
 } from '../storage/jsonStore'
+import { createDecisionStore } from '../storage/decisionStore'
 import { normalizeBlacklistKey } from './normalizeService'
 
 const foldersConfigPath = path.join(dataRoot, 'folders-config.json')
 const blacklistPath = path.join(dataRoot, 'blacklist.json')
 const pendingPath = path.join(dataRoot, 'pending.json')
-const decisionsPath = path.join(dataRoot, 'decisions.json')
+const decisionStore = createDecisionStore(path.join(dataRoot, 'decisions'), path.join(dataRoot, 'decisions.json'))
 const lastProcessedPath = path.join(dataRoot, 'last_processed.json')
 const aliasesPath = path.join(dataRoot, 'aliases.json')
 const bootstrapDiscoveryPath = path.join(dataRoot, 'bootstrap-discovery.json')
@@ -76,7 +75,6 @@ export async function initStateFiles(): Promise<void> {
 	await ensureJsonFile(foldersConfigPath, { folders: [] }, isFolderConfigFile)
 	await ensureJsonFile<BlacklistFile>(blacklistPath, { items: [] }, isBlacklistFile)
 	await ensureJsonFile<PendingFile>(pendingPath, { items: [] }, isPendingFile)
-	await ensureJsonFile<DecisionsFile>(decisionsPath, { items: [] }, isDecisionsFile)
 	await ensureJsonFile(aliasesPath, { aliases: {} }, isAliasMapFile)
 	await ensureJsonFile<BootstrapDiscoveryFile>(bootstrapDiscoveryPath, {}, isBootstrapDiscoveryFile)
 	await ensureJsonFile<QbittorrentFailuresFile>(qbittorrentFailuresPath, { items: [] }, isQbittorrentFailuresFile)
@@ -109,12 +107,12 @@ export async function savePending(items: PendingItem[]): Promise<void> {
 }
 
 export async function loadDecisions(): Promise<DecisionRecord[]> {
-	const file = await readJsonFile<DecisionsFile>(decisionsPath, { items: [] }, isDecisionsFile)
-	return file.items
+	return decisionStore.load()
 }
 
+// Appends the records pushed since the last load/save; `items` must only ever grow.
 export async function saveDecisions(items: DecisionRecord[]): Promise<void> {
-	await writeJsonFileAtomic<DecisionsFile>(decisionsPath, { items })
+	await decisionStore.save(items)
 }
 
 export async function loadQbittorrentFailures(): Promise<QbittorrentFailureItem[]> {

@@ -64,7 +64,8 @@ bun run index.ts
 ## Data Layout
 
 - `data/folders-config.json` starts with an empty `folders` array and stores watched roots managed from the dashboard.
-- `data/blacklist.json`, `data/pending.json`, `data/decisions.json`, `data/last_processed.json`, `data/bootstrap-discovery.json`, and `data/aliases.json` store runtime state.
+- `data/blacklist.json`, `data/pending.json`, `data/last_processed.json`, `data/bootstrap-discovery.json`, and `data/aliases.json` store runtime state.
+- `data/decisions/YYYY-MM.jsonl` stores the decision history, one JSON record per line, split by the month of `createdAtUtc`. The history is append-only: each save appends only the new records to the current month's file. A legacy `data/decisions.json` is migrated automatically on startup and renamed to `decisions.json.bak`. Invalid lines (e.g. a line truncated by a crash) are skipped on load and kept in `YYYY-MM.jsonl.rejected`.
 - `data/qbittorrent-failures.json` stores qBittorrent submission failures that can be retried or suppressed.
 - `data/qbittorrent-submitted.json` stores torrent IDs that were successfully submitted (or explicitly suppressed) so discovery backfill does not retry forever.
 - Scraped snapshots and downloaded torrents are stored under `torrents/page-YYYY-MM-DD-N/`.

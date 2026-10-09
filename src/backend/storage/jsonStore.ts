@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile, rename, rm } from 'node:fs/promises'
 import path from 'node:path'
-import type { BootstrapDiscoveryFile, DecisionRecord, DecisionsFile, PendingFile, PendingItem, QbittorrentFailuresFile } from '@shared/types'
+import type { BootstrapDiscoveryFile, DecisionRecord, PendingFile, PendingItem, QbittorrentFailuresFile } from '@shared/types'
 
 export const projectRoot = process.cwd()
 export const dataRoot = path.join(projectRoot, 'data')
@@ -38,11 +38,8 @@ export function isPendingFile(value: unknown): value is PendingFile {
 	return value.items.every((item) => isRecord(item) && typeof item.torrentId === 'string' && typeof item.status === 'string' && typeof item.reason === 'string' && isRecord(item.item))
 }
 
-export function isDecisionsFile(value: unknown): value is DecisionsFile {
-	if (!isRecord(value) || !Array.isArray(value.items)) {
-		return false
-	}
-	return value.items.every((item) => isRecord(item) && typeof item.torrentId === 'string' && typeof item.status === 'string' && typeof item.reason === 'string' && typeof item.createdAtUtc === 'string' && isRecord(item.item))
+export function isDecisionRecord(value: unknown): value is DecisionRecord {
+	return isRecord(value) && typeof value.torrentId === 'string' && typeof value.status === 'string' && typeof value.reason === 'string' && typeof value.createdAtUtc === 'string' && isRecord(value.item)
 }
 
 export function isQbittorrentFailuresFile(value: unknown): value is QbittorrentFailuresFile {
@@ -125,11 +122,15 @@ export async function readJsonFile<T>(filePath: string, fallback: T, validator?:
 	}
 }
 
-export async function writeJsonFileAtomic<T>(filePath: string, value: T): Promise<void> {
+export async function writeTextFileAtomic(filePath: string, content: string): Promise<void> {
 	await ensureDirectory(path.dirname(filePath))
 	const tempPath = `${filePath}.tmp`
-	await writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
+	await writeFile(tempPath, content, 'utf8')
 	await rename(tempPath, filePath)
+}
+
+export async function writeJsonFileAtomic<T>(filePath: string, value: T): Promise<void> {
+	await writeTextFileAtomic(filePath, `${JSON.stringify(value, null, 2)}\n`)
 }
 
 export async function removeFileIfExists(filePath: string): Promise<void> {
