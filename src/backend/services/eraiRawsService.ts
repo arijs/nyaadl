@@ -71,10 +71,13 @@ export function parseEraiSeriesHtml(url: string, html: string, fetchedAtUtc = ne
 		fetchedAtUtc,
 		title,
 		synopsis: clean($('.entry-content-story').first().text()) || undefined,
-		// RSS/torrent/magnet buttons carry the user's personal feed token: keep plain links only.
+		// RSS/torrent/magnet buttons carry the user's personal feed token, and the other erai-raws
+		// buttons are account pages (My Anime List, My Settings): keep NZB/SUB + external sites only.
 		links: $('a.entry-sub-content-buttons').toArray()
 			.map((a) => ({ label: clean($(a).text()), url: $(a).attr('href') ?? '' }))
-			.filter((link) => /^https?:\/\//.test(link.url) && !/[?&]token=/.test(link.url) && !/^(?:FHD|HD|SD|ALL)$/.test(link.label)),
+			.filter((link) => /^https?:\/\//.test(link.url)
+				&& !/[?&]token=/.test(link.url)
+				&& !/erai-raws\.info\/(?!nzbs\/|subs\/)/.test(link.url)),
 		releases: $('#menu0 tbody').toArray().flatMap((tbody) => {
 			const $tbody = $(tbody)
 			const $title = $tbody.find('a.aa_ss_ops_new').first()
