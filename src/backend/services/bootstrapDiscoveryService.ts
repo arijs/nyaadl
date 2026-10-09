@@ -69,6 +69,8 @@ function buildBootstrapSummary(
 		newlyFound,
 		resubmittedFromNyaa,
 		qbResponseText,
+		category: item.category,
+		sizeText: item.sizeText,
 		page: item.page,
 		itemIndex,
 	}

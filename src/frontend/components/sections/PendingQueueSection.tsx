@@ -5,6 +5,7 @@ import type { useDashboardActions } from '../../hooks/useDashboardActions'
 import type { useBootstrapWorkflow } from '../../hooks/useBootstrapWorkflow'
 import ActionButton from '../ui/ActionButton'
 import EmptyState from '../ui/EmptyState'
+import NyaaMeta from '../ui/NyaaMeta'
 
 interface PendingQueueSectionProps {
 	status: Accessor<StatusResponse | undefined>
@@ -66,9 +67,10 @@ export default function PendingQueueSection(props: PendingQueueSectionProps) {
 								<div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
 									<div class="min-w-0 max-w-full">
 										<p class="break-words text-wrap font-medium text-white">{item.item.title}</p>
+										<NyaaMeta torrentId={item.torrentId} category={item.item.category} sizeText={item.item.sizeText} />
 										<p class="mt-1 break-words text-xs text-slate-400">{item.item.seriesBaseRaw} · {item.item.resolution} · page {item.item.page}</p>
 										<p class="mt-1 break-words text-xs text-slate-400">
-											{item.item.sizeText ?? 'n/a'} · {item.item.publishedAtUtc ?? 'n/a'} · <span class="text-emerald-300">seeders {item.item.seeders ?? 'n/a'}</span> · <span class="text-rose-300">leechers {item.item.leechers ?? 'n/a'}</span> · downloads {item.item.downloads ?? 'n/a'}
+											{item.item.publishedAtUtc ?? 'n/a'} · <span class="text-emerald-300">seeders {item.item.seeders ?? 'n/a'}</span> · <span class="text-rose-300">leechers {item.item.leechers ?? 'n/a'}</span> · downloads {item.item.downloads ?? 'n/a'}
 										</p>
 										<p class="mt-1 break-words text-xs text-slate-400">{item.reason}</p>
 										<Show when={errorParts}>

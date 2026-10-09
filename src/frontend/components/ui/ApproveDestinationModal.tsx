@@ -1,5 +1,6 @@
 import { createSignal, For } from 'solid-js'
 import type { FolderOptionsData, FolderTitleVariationKey, FolderTitleVariations } from '../../../shared/api'
+import NyaaMeta from './NyaaMeta'
 
 export interface ApproveDestinationState {
 	torrentId: string
@@ -57,6 +58,7 @@ export default function ApproveDestinationModal(props: ApproveDestinationModalPr
 				<h2 class="text-base font-semibold text-white">Choose download destination</h2>
 				<p class="mt-1 text-sm text-slate-400">The system couldn't match this torrent to an existing watch target. Select where it should be saved.</p>
 				<p class="mt-2 break-words text-xs font-medium text-slate-300">{props.state.title}</p>
+				<NyaaMeta torrentId={props.state.torrentId} />
 
 				<div class="mt-5 space-y-4">
 					{/* Root folder */}

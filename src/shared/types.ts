@@ -188,6 +188,8 @@ export interface BootstrapAutoDecisionSummary {
 	newlyFound?: boolean
 	resubmittedFromNyaa?: boolean
 	qbResponseText?: string
+	category?: string
+	sizeText?: string
 	page: number
 	itemIndex: number
 }

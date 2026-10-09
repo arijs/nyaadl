@@ -6,6 +6,7 @@ import { isQbittorrentAddSuccess } from '../../../shared/qbittorrent'
 import type { useDashboardActions } from '../../hooks/useDashboardActions'
 import type { useBootstrapWorkflow } from '../../hooks/useBootstrapWorkflow'
 import ActionButton from '../ui/ActionButton'
+import NyaaMeta from '../ui/NyaaMeta'
 
 interface BootstrapDiscoverySectionProps {
 	status: Accessor<StatusResponse | undefined>
@@ -149,7 +150,7 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 									<Show when={bootstrap().nyaaResultsText}>
 										<p>{bootstrap().nyaaResultsText}</p>
 									</Show>
-									<p>Matched torrent: {bootstrap().title ?? 'n/a'}</p>
+									<p>Matched torrent: {bootstrap().title ?? 'n/a'} <Show when={bootstrap().torrentId}>{(torrentId) => <NyaaMeta torrentId={torrentId()} />}</Show></p>
 									<Show when={bootstrap().hasNextPage !== false}>
 										<p>Next cursor: {typeof bootstrap().nextPage === 'number' ? `page ${bootstrap().nextPage} item ${bootstrap().nextItemIndex ?? 0}` : 'none'}</p>
 									</Show>
@@ -183,6 +184,7 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 								{(actionItem) => (
 									<div class="rounded-xl border border-white/10 bg-white/5 p-3">
 										<p class="font-medium text-white">Needs review: {actionItem().item.title}</p>
+										<NyaaMeta torrentId={actionItem().torrentId} category={actionItem().item.category} sizeText={actionItem().item.sizeText} />
 										<p class="mt-1 text-xs text-slate-400">{actionItem().reason}</p>
 										<div class="mt-3 flex flex-wrap gap-2">
 											<ActionButton label="Approve" onClick={() => resolveReviewItem('approve')} compact />
@@ -216,7 +218,7 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 											{(entry) => (
 												<div class="mt-1 rounded-lg border border-slate-300/15 bg-slate-900/20 px-2 py-1">
 													<p class="text-xs text-slate-100">
-														p{entry.page} #{entry.itemIndex}: {entry.title}
+														p{entry.page} #{entry.itemIndex}: {entry.title} <NyaaMeta torrentId={entry.torrentId} category={entry.category} sizeText={entry.sizeText} />
 														<Show when={entry.resubmittedFromNyaa}>
 															<span class="ml-2 font-bold text-emerald-300">Resubmitted from Nyaa</span>
 														</Show>
@@ -252,7 +254,7 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 										<For each={showAllApproved() ? (bootstrap().autoApproved ?? []) : (bootstrap().autoApproved?.slice(0, previewLimit) ?? [])}>
 											{(entry) => (
 												<div class="mt-1 rounded-lg border border-emerald-300/20 bg-emerald-900/20 px-2 py-1">
-													<p class="text-xs text-emerald-100">p{entry.page} #{entry.itemIndex}: {entry.title}<Show when={entry.qbResponseText}> / qB: {qbLabel(entry.qbResponseText)}</Show></p>
+													<p class="text-xs text-emerald-100">p{entry.page} #{entry.itemIndex}: {entry.title} <NyaaMeta torrentId={entry.torrentId} category={entry.category} sizeText={entry.sizeText} /><Show when={entry.qbResponseText}> / qB: {qbLabel(entry.qbResponseText)}</Show></p>
 												</div>
 											)}
 										</For>
@@ -277,7 +279,7 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 									</div>
 									<Show when={!autoRejectedCollapsed()}>
 										<For each={showAllRejected() ? (bootstrap().autoRejected ?? []) : (bootstrap().autoRejected?.slice(0, previewLimit) ?? [])}>
-											{(entry) => <p class="mt-1 text-xs text-rose-100">p{entry.page} #{entry.itemIndex}: {entry.title}</p>}
+											{(entry) => <p class="mt-1 text-xs text-rose-100">p{entry.page} #{entry.itemIndex}: {entry.title} <NyaaMeta torrentId={entry.torrentId} category={entry.category} sizeText={entry.sizeText} /></p>}
 										</For>
 									</Show>
 								</div>
@@ -302,7 +304,7 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 										<For each={showAllAlreadyDownloaded() ? (bootstrap().alreadyDownloaded ?? []) : (bootstrap().alreadyDownloaded?.slice(0, previewLimit) ?? [])}>
 											{(entry) => (
 												<p class="mt-1 text-xs text-sky-100">
-													p{entry.page} #{entry.itemIndex}: {entry.title}
+													p{entry.page} #{entry.itemIndex}: {entry.title} <NyaaMeta torrentId={entry.torrentId} category={entry.category} sizeText={entry.sizeText} />
 													<Show when={entry.newlyFound}>
 														<span class="ml-2 font-bold text-emerald-300">Newly found</span>
 													</Show>

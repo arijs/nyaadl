@@ -2,6 +2,7 @@ import { createSignal, For, Show } from 'solid-js'
 import type { useTorrentHistoryFilter } from '../../hooks/useTorrentHistoryFilter'
 import type { TorrentFilter } from '../../types'
 import EmptyState from '../ui/EmptyState'
+import NyaaMeta from '../ui/NyaaMeta'
 
 interface TorrentHistorySectionProps {
 	torrentHistoryFilter: ReturnType<typeof useTorrentHistoryFilter>
@@ -114,6 +115,7 @@ export default function TorrentHistorySection(props: TorrentHistorySectionProps)
 												<p class="wrap-break-word text-wrap font-medium text-white">{torrent.item.title}</p>
 											<span class={statusTagClass(torrent.status)}>{torrent.status}</span>
 										</div>
+												<NyaaMeta torrentId={torrent.torrentId} category={torrent.item.category} sizeText={torrent.item.sizeText} />
 												<p class="wrap-break-word text-xs text-slate-400">{torrent.item.seriesBaseRaw} · {torrent.item.resolution} · page {torrent.item.page}</p>
 												<p class="wrap-break-word text-xs text-slate-400">{torrent.reason}</p>
 												<p class="wrap-break-word text-xs text-slate-400">

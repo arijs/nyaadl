@@ -4,6 +4,7 @@ import type { StatusResponse } from '../../../shared/api'
 import type { useBootstrapWorkflow } from '../../hooks/useBootstrapWorkflow'
 import type { useDashboardActions } from '../../hooks/useDashboardActions'
 import ActionButton from '../ui/ActionButton'
+import NyaaMeta from '../ui/NyaaMeta'
 
 interface ExecutionStateSectionProps {
 	status: Accessor<StatusResponse | undefined>
@@ -136,6 +137,7 @@ export default function ExecutionStateSection(props: ExecutionStateSectionProps)
 														ID {failure.torrentId}
 													</span>
 												</div>
+												<NyaaMeta torrentId={failure.torrentId} category={failure.item.category} sizeText={failure.item.sizeText} />
 												<p class="mt-1 text-xs text-slate-300">page {failure.item.page} · target {failure.targetFolderPath}</p>
 												<p class="mt-2 text-xs text-rose-100">{failureMessage.main}</p>
 												<Show when={failureMessage.context}>

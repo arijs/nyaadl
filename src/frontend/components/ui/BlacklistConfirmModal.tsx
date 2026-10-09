@@ -1,4 +1,5 @@
 import { Show } from 'solid-js'
+import NyaaMeta from './NyaaMeta'
 
 export interface BlacklistConfirmState {
 	torrentId: string
@@ -22,6 +23,7 @@ export default function BlacklistConfirmModal(props: BlacklistConfirmModalProps)
 				<h2 class="text-base font-semibold text-white">Bloquear série + resolução</h2>
 				<p class="mt-1 text-sm text-slate-400">Novos episódios nessa resolução deixarão de ser baixados automaticamente.</p>
 				<p class="mt-2 break-words text-xs font-medium text-slate-300">{props.state.title}</p>
+				<NyaaMeta torrentId={props.state.torrentId} />
 
 				<div class="mt-5 space-y-4">
 					<div>
