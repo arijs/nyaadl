@@ -1,6 +1,6 @@
 import { appendFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { DecisionRecord } from '@shared/types'
+import type { DecisionRecord, TorrentItem } from '@shared/types'
 import { isDecisionRecord, writeJsonFileAtomic, writeTextFileAtomic } from './jsonStore'
 
 // Decisions are append-only history, stored as one JSONL file per month
@@ -13,14 +13,45 @@ export interface DecisionStore {
 	save(items: DecisionRecord[]): Promise<void>
 }
 
+// Only TorrentItem fields (plus internalNames, read back by bootstrap replay) are
+// persisted. Classified items carry extra runtime fields (status, reason,
+// seriesKey, matchedTarget) that are either duplicated or never read from history.
+const persistedItemKeys = [
+	'torrentId',
+	'title',
+	'viewUrl',
+	'downloadUrl',
+	'page',
+	'publishedAtUtc',
+	'sizeText',
+	'seeders',
+	'leechers',
+	'downloads',
+	'seriesBaseRaw',
+	'resolution',
+	'matchCandidates',
+	'internalNames',
+] as const satisfies ReadonlyArray<keyof TorrentItem | 'internalNames'>
+
 const monthFilePattern = /^(\d{4}-\d{2}|unknown)\.jsonl$/
 
 export function decisionMonthKey(createdAtUtc: string): string {
 	return /^\d{4}-\d{2}/.exec(createdAtUtc)?.[0] ?? 'unknown'
 }
 
+export function toPersistedDecision(record: DecisionRecord): DecisionRecord {
+	const source = record.item as TorrentItem & Record<string, unknown>
+	const item: Record<string, unknown> = {}
+	for (const key of persistedItemKeys) {
+		if (source[key] !== undefined) {
+			item[key] = source[key]
+		}
+	}
+	return { ...record, item: item as unknown as TorrentItem }
+}
+
 function serializeDecisions(records: DecisionRecord[]): string {
-	return records.map((record) => `${JSON.stringify(record)}\n`).join('')
+	return records.map((record) => `${JSON.stringify(toPersistedDecision(record))}\n`).join('')
 }
 
 function groupConsecutiveByMonth(records: DecisionRecord[]): Array<{ month: string; records: DecisionRecord[] }> {

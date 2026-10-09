@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
 import type { DecisionRecord } from '@shared/types'
-import { createDecisionStore, decisionMonthKey } from './decisionStore.js'
+import { createDecisionStore, decisionMonthKey, toPersistedDecision } from './decisionStore.js'
 
 function decision(torrentId: string, createdAtUtc: string, extraItemFields: Record<string, unknown> = {}): DecisionRecord {
 	return {
@@ -106,6 +106,24 @@ test('save rejects a history that shrank, since decisions are append-only', asyn
 	})
 })
 
+test('persisted items keep TorrentItem fields and internalNames but drop leaked runtime fields', () => {
+	const record = decision('1', '2026-10-01T00:00:00.000Z', {
+		status: 'pending',
+		reason: 'requires approval',
+		seriesKey: 'some series',
+		matchedTarget: { folderPath: 'D:/anime/Some Series' },
+		internalNames: ['Some Series - 01.mkv'],
+		sizeText: '1.0 GiB',
+	})
+	const persisted = toPersistedDecision(record)
+	assert.deepEqual(Object.keys(persisted.item).sort(), [
+		'downloadUrl', 'internalNames', 'matchCandidates', 'page', 'resolution', 'seriesBaseRaw', 'sizeText', 'title', 'torrentId', 'viewUrl',
+	])
+	assert.equal(persisted.status, 'blocked')
+	assert.equal(persisted.reason, 'series+resolution blacklisted')
+	assert.ok('matchedTarget' in record.item, 'the in-memory record is not mutated')
+})
+
 test('a truncated trailing line is skipped, kept aside, and the file is repaired for further appends', async () => {
 	await withTempDataRoot(async ({ dirPath, legacyPath }) => {
 		await mkdir(dirPath, { recursive: true })
@@ -150,6 +168,7 @@ test('legacy decisions.json is migrated into monthly files, preserving order, an
 
 		const loaded = await createDecisionStore(dirPath, legacyPath).load()
 		assert.deepEqual(loaded.map((record) => `${record.torrentId}@${record.createdAtUtc.slice(0, 10)}`), ['1@2026-05-10', '2@2026-06-01', '1@2026-06-02'])
+		assert.equal('matchedTarget' in loaded[0]!.item, false)
 		assert.deepEqual((await readdir(dirPath)).sort(), ['2026-05.jsonl', '2026-06.jsonl'])
 		assert.deepEqual((await readdir(dataRoot)).sort(), ['decisions', 'decisions.json.bak'])
 
