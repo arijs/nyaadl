@@ -59,15 +59,21 @@ function Section(props: { title: string; action?: JSX.Element; children: JSX.Ele
 	)
 }
 
-function SeriesImage(props: { slug: string; site: SeriesSource; version?: string }) {
+// Opens a featured image in the modal-wide preview.
+type ImagePreview = (src: string) => void
+
+function SeriesImage(props: { slug: string; site: SeriesSource; version?: string; onPreview: ImagePreview }) {
 	const [failed, setFailed] = createSignal(false)
+	const src = () => `/api/series/${props.slug}/images/${props.site}?v=${encodeURIComponent(props.version ?? '')}`
 	return (
 		<Show when={!failed()}>
 			<img
-				src={`/api/series/${props.slug}/images/${props.site}?v=${encodeURIComponent(props.version ?? '')}`}
+				src={src()}
 				alt=""
+				title="Click to preview"
 				onError={() => setFailed(true)}
-				class="w-36 shrink-0 self-start rounded-2xl border border-white/10 object-cover"
+				onClick={() => props.onPreview(src())}
+				class="w-36 shrink-0 cursor-zoom-in self-start rounded-2xl border border-white/10 object-cover transition hover:border-white/30"
 			/>
 		</Show>
 	)
@@ -150,12 +156,12 @@ function NyaaTab(props: { detail: TorrentDetailsPayload['nyaa'] }) {
 	)
 }
 
-function EraiTab(props: { slug: string; details: EraiRawsSeriesDetails }) {
+function EraiTab(props: { slug: string; details: EraiRawsSeriesDetails; onPreview: ImagePreview }) {
 	const series = () => props.details.series
 	return (
 		<>
 			<div class="flex gap-4">
-				<SeriesImage slug={props.slug} site="erai" version={series().fetchedAtUtc} />
+				<SeriesImage slug={props.slug} site="erai" version={series().fetchedAtUtc} onPreview={props.onPreview} />
 				<div class="min-w-0">
 					<h3 class="text-base font-semibold text-white">{series().title}</h3>
 					<p class="mt-2 whitespace-pre-wrap text-sm text-slate-300">{series().synopsis}</p>
@@ -214,7 +220,7 @@ function ExpandableCard(props: { header: JSX.Element; text: string }) {
 	)
 }
 
-function MalTab(props: { slug: string; details: MalDetails }) {
+function MalTab(props: { slug: string; details: MalDetails; onPreview: ImagePreview }) {
 	const d = () => props.details
 	const [playing, setPlaying] = createSignal<MalDetails['videos'][number]>()
 	const [showAllReviews, setShowAllReviews] = createSignal(false)
@@ -223,7 +229,7 @@ function MalTab(props: { slug: string; details: MalDetails }) {
 	return (
 		<>
 			<div class="flex gap-4">
-				<SeriesImage slug={props.slug} site="mal" version={d().fetchedAtUtc} />
+				<SeriesImage slug={props.slug} site="mal" version={d().fetchedAtUtc} onPreview={props.onPreview} />
 				<div class="min-w-0">
 					<h3 class="text-base font-semibold text-white">{d().title}</h3>
 					<Show when={d().englishTitle}><p class="text-sm text-slate-400">{d().englishTitle}</p></Show>
@@ -317,13 +323,13 @@ function verdictClass(verdict: string | undefined): string {
 // AniDB's own names for its rating kinds (as on the anime page).
 const anidbRatingLabels: Record<string, string> = { permanent: 'Rating', temporary: 'Average', review: 'Review rating' }
 
-function AnidbTab(props: { slug: string; details: AnidbDetails }) {
+function AnidbTab(props: { slug: string; details: AnidbDetails; onPreview: ImagePreview }) {
 	const d = () => props.details
 	const mainTitle = () => d().titles.find((title) => title.type === 'main')?.title ?? d().titles[0]?.title ?? `AniDB ${d().aid}`
 	return (
 		<>
 			<div class="flex gap-4">
-				<SeriesImage slug={props.slug} site="anidb" version={d().fetchedAtUtc} />
+				<SeriesImage slug={props.slug} site="anidb" version={d().fetchedAtUtc} onPreview={props.onPreview} />
 				<div class="min-w-0">
 					<h3 class="text-base font-semibold text-white">{mainTitle()}</h3>
 					<p class="text-xs text-slate-400">
@@ -445,8 +451,16 @@ export default function TorrentDetailsModal(props: TorrentDetailsModalProps) {
 	const [mal, refreshMal] = lazyResource<string, SeriesSourcePayload<MalDetails>>(seriesSource('mal'), (key) => `/api/series/${key}/mal`)
 	const [anidb, refreshAnidb] = lazyResource<string, SeriesSourcePayload<AnidbDetails>>(seriesSource('anidb'), (key) => `/api/series/${key}/anidb`)
 
+	// Featured image shown over the whole modal (tabs included); a click anywhere closes it.
+	const [preview, setPreview] = createSignal<string>()
+
 	const onKeyDown = (event: KeyboardEvent) => {
-		if (event.key === 'Escape') {
+		if (event.key !== 'Escape') {
+			return
+		}
+		if (preview()) {
+			setPreview(undefined)
+		} else {
 			props.onClose()
 		}
 	}
@@ -455,7 +469,14 @@ export default function TorrentDetailsModal(props: TorrentDetailsModalProps) {
 
 	return (
 		<div class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm" onClick={(event) => event.target === event.currentTarget && props.onClose()}>
-			<div class="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-3xl border border-white/10 bg-slate-950 p-6 shadow-2xl shadow-black/40">
+			<div class="relative flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-slate-950 p-6 shadow-2xl shadow-black/40">
+				<Show when={preview()}>
+					{(src) => (
+						<div class="absolute inset-0 z-10 flex cursor-zoom-out items-center justify-center bg-slate-950 p-4" title="Click to close the preview" onClick={() => setPreview(undefined)}>
+							<img src={src()} alt="" class="max-h-full max-w-full rounded-2xl object-contain" />
+						</div>
+					)}
+				</Show>
 				<div class="flex items-center justify-between gap-4">
 					<div class="flex flex-wrap gap-2">
 						<For each={tabs}>{(entry) => {
@@ -485,21 +506,21 @@ export default function TorrentDetailsModal(props: TorrentDetailsModalProps) {
 						<Match when={tab() === 'erai' && slug()}>
 							{(key) => (
 								<TabState resource={erai} onRefresh={refreshErai} fetchedAtUtc={settled(erai)?.data?.series.fetchedAtUtc}>
-									{(payload) => (payload.data ? <EraiTab slug={key()} details={payload.data} /> : <MissingLink reason={payload.reason} />)}
+									{(payload) => (payload.data ? <EraiTab slug={key()} details={payload.data} onPreview={setPreview} /> : <MissingLink reason={payload.reason} />)}
 								</TabState>
 							)}
 						</Match>
 						<Match when={tab() === 'mal' && slug()}>
 							{(key) => (
 								<TabState resource={mal} onRefresh={refreshMal} fetchedAtUtc={settled(mal)?.data?.fetchedAtUtc}>
-									{(payload) => (payload.data ? <MalTab slug={key()} details={payload.data} /> : <MissingLink reason={payload.reason} />)}
+									{(payload) => (payload.data ? <MalTab slug={key()} details={payload.data} onPreview={setPreview} /> : <MissingLink reason={payload.reason} />)}
 								</TabState>
 							)}
 						</Match>
 						<Match when={tab() === 'anidb' && slug()}>
 							{(key) => (
 								<TabState resource={anidb} onRefresh={refreshAnidb} fetchedAtUtc={settled(anidb)?.data?.fetchedAtUtc}>
-									{(payload) => (payload.data ? <AnidbTab slug={key()} details={payload.data} /> : <MissingLink reason={payload.reason} />)}
+									{(payload) => (payload.data ? <AnidbTab slug={key()} details={payload.data} onPreview={setPreview} /> : <MissingLink reason={payload.reason} />)}
 								</TabState>
 							)}
 						</Match>
