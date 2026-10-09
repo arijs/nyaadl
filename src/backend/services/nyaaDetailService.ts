@@ -2,8 +2,9 @@ import path from 'node:path'
 import { stat } from 'node:fs/promises'
 import { load, type Cheerio, type CheerioAPI } from 'cheerio'
 import type { Element } from 'domhandler'
-import { dataRoot, writeJsonFileAtomic } from '../storage/jsonStore'
+import { dataRoot, readJsonFile, writeJsonFileAtomic } from '../storage/jsonStore'
 import { decisionMonthKey } from '../storage/decisionStore'
+import { archiveEraiSeries } from './eraiRawsService'
 import { withRetry } from './retryService'
 
 // Everything the Nyaa /view/<id> page exposes, saved as data/YYYY-MM/<torrentId>.json
@@ -112,12 +113,17 @@ export async function fetchNyaaDetail(torrentId: string): Promise<NyaaTorrentDet
 // Best effort: a failed detail fetch must never block classification/download.
 export async function archiveNyaaDetail(torrentId: string, processedAtUtc = new Date().toISOString()): Promise<void> {
 	const filePath = nyaaDetailFilePath(torrentId, processedAtUtc)
+	let information: string | undefined
 	if (await stat(filePath).then(() => true, () => false)) {
-		return
+		information = (await readJsonFile<Partial<NyaaTorrentDetail>>(filePath, {})).information
+	} else {
+		try {
+			const detail = await fetchNyaaDetail(torrentId)
+			await writeJsonFileAtomic(filePath, detail)
+			information = detail.information
+		} catch (error) {
+			console.warn(`Could not archive Nyaa details for ${torrentId}: ${error instanceof Error ? error.message : String(error)}`)
+		}
 	}
-	try {
-		await writeJsonFileAtomic(filePath, await fetchNyaaDetail(torrentId))
-	} catch (error) {
-		console.warn(`Could not archive Nyaa details for ${torrentId}: ${error instanceof Error ? error.message : String(error)}`)
-	}
+	await archiveEraiSeries(information)
 }

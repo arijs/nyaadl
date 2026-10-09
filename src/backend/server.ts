@@ -9,6 +9,7 @@ import { addWatchRoot, loadAliases, removeWatchRoot, validateWatchRootPath } fro
 import { downloadTorrentFile, findDownloadedTorrentFileById } from './services/downloaderService'
 import { getQbittorrentRuntimeConfig, updateQbittorrentRuntimeConfig } from './services/qbittorrentService'
 import { buildDailyReport } from './services/reportService'
+import { getEraiRawsStatus, saveEraiRawsSession } from './services/eraiRawsService'
 // If nyaaScraperServiceStream fails, you can use the cheerio version below
 // import { scrapeNyaaPage } from './services/nyaaScraperService'
 import { scrapeNyaaPage } from './services/nyaaScraperServiceStream'
@@ -77,6 +78,11 @@ interface QbittorrentConfigBody {
 	baseUrl?: string
 	username?: string
 	password?: string
+}
+
+interface EraiRawsSessionBody {
+	cookie?: string
+	userAgent?: string
 }
 
 interface ApproveBody {
@@ -351,8 +357,17 @@ async function main(): Promise<void> {
 				queue: pendingState,
 				qbittorrentConfig: getQbittorrentRuntimeConfig(),
 				qbittorrentFailures: qbittorrentFailuresState,
+				eraiRaws: await getEraiRawsStatus(),
 			},
 		}
+	})
+
+	app.post('/api/erai-raws/session', async (event) => {
+		const body = await readBody<EraiRawsSessionBody>(event).catch(() => undefined)
+		if (!body?.cookie?.trim()) {
+			throw badRequest('Missing erai-raws cookie')
+		}
+		return { success: true, data: await saveEraiRawsSession({ cookie: body.cookie, userAgent: body.userAgent ?? '' }) }
 	})
 
 	app.post('/api/qbittorrent/config', async (event) => {

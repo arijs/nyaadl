@@ -98,6 +98,12 @@ export interface AppStatus {
 	watchRootStatuses?: WatchRootStatus[]
 }
 
+export interface EraiRawsStatus {
+	configured: boolean
+	status: 'unknown' | 'ok' | 'expired'
+	loggedInAs?: string
+}
+
 export interface QbittorrentRuntimeConfig {
 	baseUrl: string
 	username: string

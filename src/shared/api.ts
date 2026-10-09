@@ -1,4 +1,4 @@
-import type { AppStatus, BlacklistEntry, BootstrapDiscoveryResult, DailyReport, PendingItem, QbittorrentFailureItem, QbittorrentRuntimeConfig, TorrentFilter, TorrentHistoryItem, WatchRootStatus, WatchTarget } from './types'
+import type { AppStatus, BlacklistEntry, EraiRawsStatus,BootstrapDiscoveryResult, DailyReport, PendingItem, QbittorrentFailureItem, QbittorrentRuntimeConfig, TorrentFilter, TorrentHistoryItem, WatchRootStatus, WatchTarget } from './types'
 
 export interface ApiEnvelope<T> {
 	success: boolean
@@ -10,6 +10,7 @@ export interface StatusPayload {
 	queue: PendingItem[]
 	qbittorrentConfig: QbittorrentRuntimeConfig
 	qbittorrentFailures: QbittorrentFailureItem[]
+	eraiRaws: EraiRawsStatus
 }
 
 export type StatusResponse = ApiEnvelope<StatusPayload>
