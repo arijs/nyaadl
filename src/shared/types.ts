@@ -313,6 +313,21 @@ export interface MalDetails {
 	synopsis?: string
 	info: Array<{ label: string; value: string }>
 	videos: Array<{ title: string; youtubeId: string }>
+	// First page of /reviews (absent in files saved before reviews were added).
+	reviews?: MalReview[]
+}
+
+export interface MalReview {
+	user: string
+	postedAt?: string
+	// "Recommended" | "Mixed Feelings" | "Not Recommended"
+	verdict?: string
+	// e.g. "Preliminary (3/12 eps)"
+	preliminary?: string
+	score?: number
+	reactions?: number
+	text: string
+	url?: string
 }
 
 // data/series/<slug>/anidb.json
@@ -326,9 +341,18 @@ export interface AnidbDetails {
 	startDate?: string
 	endDate?: string
 	ratings: Array<{ kind: string; value: string; count?: number }>
-	tags: Array<{ name: string; weight: number }>
+	tags: Array<{ name: string; weight: number; description?: string }>
 	description?: string
 	imageUrl?: string
+	// The fields below came later: files saved before them don't have them.
+	season?: string
+	officialUrl?: string
+	resources?: Array<{ label: string; url: string }>
+	creators?: Array<{ role: string; name: string }>
+	characters?: Array<{ name: string; role: string; seiyuu?: string }>
+	episodes?: Array<{ number: string; title?: string; airDate?: string; lengthMinutes?: number; rating?: string; summary?: string }>
+	recommendations?: Array<{ type: string; text: string }>
+	related?: Array<{ aid: string; relation: string; title: string }>
 }
 
 export type SeriesSource = 'erai' | 'mal' | 'anidb'

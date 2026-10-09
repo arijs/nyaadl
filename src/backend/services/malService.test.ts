@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { malAnimeId, parseMalHtml, parseMalVideosHtml } from './malService'
+import { malAnimeId, parseMalHtml, parseMalReviewsHtml, parseMalVideosHtml } from './malService'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const html = readFileSync(join(__dirname, 'fixtures/mal-anime-sample.html'), 'utf8')
@@ -37,6 +37,31 @@ test('parseMalVideosHtml lists each YouTube trailer once', () => {
 	assert.deepEqual(parseMalVideosHtml(videos), [
 		{ title: 'PV 2 (English sub ver.)', youtubeId: 'WsT7OO91jXo' },
 		{ title: 'PV 2', youtubeId: 'SFTkstB7ICs' },
+	])
+})
+
+test('parseMalReviewsHtml keeps the full text, verdict, score and preliminary flag', () => {
+	assert.deepEqual(parseMalReviewsHtml(readFileSync(join(__dirname, 'fixtures/mal-reviews-sample.html'), 'utf8')), [
+		{
+			user: 'reviewer_one',
+			postedAt: 'May 3, 2026',
+			verdict: 'Not Recommended',
+			preliminary: 'Preliminary (3/12 eps)',
+			score: 4,
+			reactions: 62,
+			text: '~ The animation can look a bit choppy,\n\nbut the leads carry it. The rest of the review stays hidden until "Read more".',
+			url: 'https://myanimelist.net/reviews.php?id=603699',
+		},
+		{
+			user: 'reviewer_two',
+			postedAt: 'Jul 1, 2026',
+			verdict: 'Mixed Feelings',
+			preliminary: undefined,
+			score: 6,
+			reactions: 0,
+			text: 'Nice try.',
+			url: undefined,
+		},
 	])
 })
 

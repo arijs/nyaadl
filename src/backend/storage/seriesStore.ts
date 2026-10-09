@@ -1,6 +1,6 @@
 import path from 'node:path'
-import { readdir, rm, writeFile } from 'node:fs/promises'
-import { dataRoot, ensureDirectory, readJsonFile, writeJsonFileAtomic } from './jsonStore'
+import { readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { dataRoot, ensureDirectory, readJsonFile, writeJsonFileAtomic, writeTextFileAtomic } from './jsonStore'
 
 // One folder per series (keyed by the erai-raws slug): data/series/<slug>/{erai,erai-releases,mal,anidb}.json + <site>.<ext> images.
 export const seriesRoot = path.join(dataRoot, 'series')
@@ -26,6 +26,15 @@ export async function readSeriesJson<T>(slug: string, name: string, root = serie
 
 export async function writeSeriesJson<T>(slug: string, name: string, value: T, root = seriesRoot): Promise<void> {
 	await writeJsonFileAtomic(path.join(seriesDir(slug, root), `${name}.json`), value)
+}
+
+// Raw source payloads (e.g. anidb.xml) kept so they can be re-parsed without another request.
+export async function readSeriesText(slug: string, fileName: string, root = seriesRoot): Promise<string | undefined> {
+	return readFile(path.join(seriesDir(slug, root), fileName), 'utf8').catch(() => undefined)
+}
+
+export async function writeSeriesText(slug: string, fileName: string, content: string, root = seriesRoot): Promise<void> {
+	await writeTextFileAtomic(path.join(seriesDir(slug, root), fileName), content)
 }
 
 export async function findSeriesImage(slug: string, site: string, root = seriesRoot): Promise<{ filePath: string; contentType: string } | undefined> {

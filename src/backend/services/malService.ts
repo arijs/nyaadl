@@ -1,5 +1,5 @@
 import { load } from 'cheerio'
-import type { MalDetails } from '@shared/types'
+import type { MalDetails, MalReview } from '@shared/types'
 import { readSeriesJson, saveSeriesImage, writeSeriesJson } from '../storage/seriesStore'
 import { getEraiSeries } from './eraiRawsService'
 import { withRetry } from './retryService'
@@ -51,6 +51,32 @@ export function parseMalVideosHtml(html: string): MalDetails['videos'] {
 	})
 }
 
+// First page of /anime/<id>/_/reviews: the full text is already in the page ("Read more" only unhides it).
+export function parseMalReviewsHtml(html: string): MalReview[] {
+	const $ = load(html)
+	return $('.review-element').toArray().flatMap((element) => {
+		const $review = $(element)
+		const $text = $review.find('.text').first().clone()
+		$text.find('br').replaceWith('\n')
+		const text = $text.text().replace(/[ \t]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+		if (!text) {
+			return []
+		}
+		const tags = $review.find('.tags .tag').toArray().map((tag) => clean($(tag).text()))
+		const reactions = /"num":(\d+)/.exec($review.attr('data-reactions') ?? '')?.[1]
+		return [{
+			user: clean($review.find('.username a').first().text()),
+			postedAt: clean($review.find('.update_at').first().text()) || undefined,
+			verdict: tags.find((tag) => /recommended|mixed feelings/i.test(tag)),
+			preliminary: tags.find((tag) => /^preliminary/i.test(tag)),
+			score: Number(clean($review.find('.rating .num').first().text())) || undefined,
+			reactions: reactions ? Number(reactions) : undefined,
+			text,
+			url: $review.find('.open a').first().attr('href'),
+		}]
+	})
+}
+
 async function fetchMalHtml(url: string): Promise<string> {
 	const response = await withRetry(async () => fetch(url, {
 		headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'accept-language': 'en-US,en;q=0.9' },
@@ -79,6 +105,7 @@ export async function getMalDetails(slug: string, refresh = false): Promise<MalD
 		...parseMalHtml(url, await fetchMalHtml(url)),
 		// "_" stands in for the title slug; MAL resolves it.
 		videos: parseMalVideosHtml(await fetchMalHtml(`${url}/_/video`)),
+		reviews: parseMalReviewsHtml(await fetchMalHtml(`${url}/_/reviews`)),
 	}
 	await writeSeriesJson(slug, 'mal', details)
 	await saveSeriesImage(slug, 'mal', details.imageUrl)
