@@ -6,11 +6,14 @@ import { isDecisionRecord, writeJsonFileAtomic, writeTextFileAtomic } from './js
 // Decisions are append-only history, stored as one JSONL file per month
 // (data/decisions/YYYY-MM.jsonl, month taken from createdAtUtc). Saving only
 // appends records that were pushed since the last save, so the cost of a save
-// no longer grows with the size of the history.
+// no longer grows with the size of the history. The one exception is a backfill
+// of an already persisted record: markDirty() makes the next save rewrite that
+// record's month file.
 
 export interface DecisionStore {
 	load(): Promise<DecisionRecord[]>
 	save(items: DecisionRecord[]): Promise<void>
+	markDirty(records: DecisionRecord[]): void
 }
 
 // Only TorrentItem fields (plus internalNames, read back by bootstrap replay) are
@@ -76,6 +79,7 @@ async function pathExists(filePath: string): Promise<boolean> {
 export function createDecisionStore(dirPath: string, legacyFilePath: string): DecisionStore {
 	let persistedCount = 0
 	let saveQueue: Promise<void> = Promise.resolve()
+	const dirtyMonths = new Set<string>()
 
 	function monthFilePath(month: string): string {
 		return path.join(dirPath, `${month}.jsonl`)
@@ -180,12 +184,35 @@ export function createDecisionStore(dirPath: string, legacyFilePath: string): De
 		}
 	}
 
+	// A month file is exactly the records of items[0..persistedCount) of that month,
+	// in order (load reads files in order, appends keep it), so a dirty month is
+	// rewritten from that slice; the unsaved tail is appended afterwards as usual.
+	async function rewriteDirtyMonths(items: DecisionRecord[]): Promise<void> {
+		if (items.length < persistedCount) {
+			throw new Error(`Decisions are append-only: got ${items.length} records but ${persistedCount} are already persisted`)
+		}
+		const persisted = items.slice(0, persistedCount)
+		for (const month of [...dirtyMonths]) {
+			await writeTextFileAtomic(monthFilePath(month), serializeDecisions(persisted.filter((record) => decisionMonthKey(record.createdAtUtc) === month)))
+			dirtyMonths.delete(month)
+		}
+	}
+
+	function markDirty(records: DecisionRecord[]): void {
+		for (const record of records) {
+			dirtyMonths.add(decisionMonthKey(record.createdAtUtc))
+		}
+	}
+
 	function save(items: DecisionRecord[]): Promise<void> {
 		// Serialize saves so overlapping requests never append the same tail twice.
-		const run = saveQueue.then(() => appendUnsaved(items))
+		const run = saveQueue.then(async () => {
+			await rewriteDirtyMonths(items)
+			await appendUnsaved(items)
+		})
 		saveQueue = run.catch(() => undefined)
 		return run
 	}
 
-	return { load, save }
+	return { load, save, markDirty }
 }

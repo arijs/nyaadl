@@ -106,6 +106,54 @@ test('save rejects a history that shrank, since decisions are append-only', asyn
 	})
 })
 
+test('a backfilled persisted record rewrites only its month, then the new tail is appended once', async () => {
+	await withTempDataRoot(async ({ dirPath, legacyPath }) => {
+		const store = createDecisionStore(dirPath, legacyPath)
+		const items = await store.load()
+		items.push(decision('1', '2026-09-01T00:00:00.000Z'), decision('2', '2026-10-01T00:00:00.000Z'), decision('3', '2026-09-02T00:00:00.000Z'))
+		await store.save(items)
+		const octoberBefore = await readFile(path.join(dirPath, '2026-10.jsonl'), 'utf8')
+
+		items[0]!.item.category = 'Anime - English-translated'
+		store.markDirty([items[0]!])
+		items.push(decision('4', '2026-09-03T00:00:00.000Z'))
+		await store.save(items)
+
+		assert.equal(await readFile(path.join(dirPath, '2026-10.jsonl'), 'utf8'), octoberBefore)
+		const septemberIds = (await readLines(path.join(dirPath, '2026-09.jsonl'))).map((line) => (JSON.parse(line) as DecisionRecord).torrentId)
+		assert.deepEqual(septemberIds, ['1', '3', '4'])
+		const reloaded = await createDecisionStore(dirPath, legacyPath).load()
+		assert.equal(reloaded.find((record) => record.torrentId === '1')?.item.category, 'Anime - English-translated')
+		assert.equal(reloaded.length, 4)
+	})
+})
+
+test('a dirty month is rewritten once; later saves go back to appending', async () => {
+	await withTempDataRoot(async ({ dirPath, legacyPath }) => {
+		const store = createDecisionStore(dirPath, legacyPath)
+		const items = await store.load()
+		items.push(decision('1', '2026-10-01T00:00:00.000Z'))
+		await store.save(items)
+		store.markDirty(items)
+		await store.save(items)
+		await writeFile(path.join(dirPath, '2026-10.jsonl'), 'marker\n', 'utf8')
+		await store.save(items)
+		assert.deepEqual(await readLines(path.join(dirPath, '2026-10.jsonl')), ['marker'])
+	})
+})
+
+test('a dirty save rejects a shrunken history before touching any month file', async () => {
+	await withTempDataRoot(async ({ dirPath, legacyPath }) => {
+		const store = createDecisionStore(dirPath, legacyPath)
+		const items = await store.load()
+		items.push(decision('1', '2026-10-01T00:00:00.000Z'), decision('2', '2026-10-01T00:00:01.000Z'))
+		await store.save(items)
+		store.markDirty(items)
+		await assert.rejects(store.save([]), /append-only/)
+		assert.equal((await readLines(path.join(dirPath, '2026-10.jsonl'))).length, 2)
+	})
+})
+
 test('persisted items keep TorrentItem fields and internalNames but drop leaked runtime fields', () => {
 	const record = decision('1', '2026-10-01T00:00:00.000Z', {
 		status: 'pending',
