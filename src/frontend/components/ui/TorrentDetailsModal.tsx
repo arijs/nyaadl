@@ -183,9 +183,36 @@ function EraiTab(props: { slug: string; details: EraiRawsSeriesDetails }) {
 	)
 }
 
+// Same pill as the dashboard's section Expand/Collapse buttons, sitting top-right of what it toggles.
+function PillButton(props: { label: string; onClick: () => void }) {
+	return (
+		<button type="button" onClick={() => props.onClick()} class="shrink-0 rounded-full border border-slate-300/30 bg-slate-300/10 px-2 py-0.5 text-[11px] text-slate-100 hover:border-slate-300/50">
+			{props.label}
+		</button>
+	)
+}
+
+// Card with a one-line header and a text clamped to 3 lines until expanded (MAL reviews, AniDB recommendations).
+function ExpandableCard(props: { header: JSX.Element; text: string }) {
+	const [expanded, setExpanded] = createSignal(false)
+	// ponytail: length heuristic for "is it clamped"; measure overflow if short texts ever show a useless button.
+	const long = () => props.text.length > 280 || props.text.split('\n').length > 3
+	return (
+		<li class="rounded-2xl border border-white/10 bg-white/5 p-3 text-xs">
+			<div class="flex items-start justify-between gap-3">
+				<div class="flex min-w-0 flex-wrap items-center gap-2">{props.header}</div>
+				<Show when={long()}>
+					<PillButton label={expanded() ? 'Collapse' : 'Expand'} onClick={() => setExpanded((current) => !current)} />
+				</Show>
+			</div>
+			<p class={`mt-2 whitespace-pre-wrap text-slate-300 ${long() && !expanded() ? 'line-clamp-3' : ''}`}>{props.text}</p>
+		</li>
+	)
+}
+
 function MalTab(props: { slug: string; details: MalDetails }) {
 	const d = () => props.details
-	const [playing, setPlaying] = createSignal<string>()
+	const [playing, setPlaying] = createSignal<MalDetails['videos'][number]>()
 	return (
 		<>
 			<div class="flex gap-4">
@@ -206,20 +233,26 @@ function MalTab(props: { slug: string; details: MalDetails }) {
 			</div>
 			<Show when={d().videos.length}>
 				<Section title={`Trailers (${d().videos.length})`}>
-					<Show when={playing()}>
-						{(youtubeId) => (
-							<iframe
-								src={`https://www.youtube-nocookie.com/embed/${youtubeId()}?autoplay=1`}
-								title="Trailer"
-								allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-								allowfullscreen
-								class="mb-3 aspect-video w-full rounded-2xl border border-white/10"
-							/>
+					<Show when={playing()} keyed>
+						{(video) => (
+							<div class="mb-3 rounded-2xl border border-white/10 bg-black/20 p-2">
+								<div class="mb-2 flex items-center justify-between gap-3 px-1 text-xs">
+									<span class="truncate text-slate-200">▶ {video.title}</span>
+									<PillButton label="Close" onClick={() => setPlaying(undefined)} />
+								</div>
+								<iframe
+									src={`https://www.youtube-nocookie.com/embed/${video.youtubeId}?autoplay=1`}
+									title={video.title}
+									allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+									allowfullscreen
+									class="aspect-video w-full rounded-xl"
+								/>
+							</div>
 						)}
 					</Show>
 					<div class="flex gap-3 overflow-x-auto pb-1">
 						<For each={d().videos}>{(video) => (
-							<button type="button" onClick={() => setPlaying(video.youtubeId)} class={`w-40 shrink-0 text-left text-xs ${playing() === video.youtubeId ? 'text-amber-200' : 'text-slate-300'}`}>
+							<button type="button" onClick={() => setPlaying(video)} class={`w-40 shrink-0 text-left text-xs ${playing()?.youtubeId === video.youtubeId ? 'text-amber-200' : 'text-slate-300'}`}>
 								<img src={`https://i.ytimg.com/vi/${video.youtubeId}/mqdefault.jpg`} alt="" class="aspect-video w-full rounded-xl border border-white/10 object-cover" />
 								<span class="mt-1 block truncate">▶ {video.title}</span>
 							</button>
@@ -236,25 +269,22 @@ function MalTab(props: { slug: string; details: MalDetails }) {
 				<Show when={d().reviews} fallback={<p class="text-xs text-slate-500">Saved before reviews were collected — click Refresh to fetch them.</p>}>
 					<ul class="space-y-2">
 						<For each={d().reviews}>{(review) => (
-							<li class="rounded-2xl border border-white/10 bg-white/5 p-3 text-xs">
-								<details class="group">
-									<summary class="cursor-pointer list-none">
-										<div class="flex flex-wrap items-center gap-2">
-											<Show when={review.verdict}>
-												<span class={`rounded-full px-2 py-0.5 ${verdictClass(review.verdict)}`}>{review.verdict}</span>
-											</Show>
-											<Show when={review.score}><span class="font-semibold text-slate-100">{review.score}/10</span></Show>
-											<span class="text-slate-300">{review.user}</span>
-											<span class="text-slate-500">{review.postedAt}</span>
-											<Show when={review.preliminary}><span class="text-amber-200/80">{review.preliminary}</span></Show>
-											<Show when={review.reactions}><span class="text-slate-500">· {review.reactions} reactions</span></Show>
-											<Show when={review.url}><a href={review.url} target="_blank" rel="noopener noreferrer" class="ml-auto text-sky-300 hover:underline">MAL ↗</a></Show>
-										</div>
-										<p class="mt-1 line-clamp-3 text-slate-300 group-open:hidden">{review.text}</p>
-									</summary>
-									<p class="mt-2 whitespace-pre-wrap text-slate-300">{review.text}</p>
-								</details>
-							</li>
+							<ExpandableCard
+								text={review.text}
+								header={
+									<>
+										<Show when={review.verdict}>
+											<span class={`rounded-full px-2 py-0.5 ${verdictClass(review.verdict)}`}>{review.verdict}</span>
+										</Show>
+										<Show when={review.score}><span class="font-semibold text-slate-100">{review.score}/10</span></Show>
+										<span class="text-slate-300">{review.user}</span>
+										<span class="text-slate-500">{review.postedAt}</span>
+										<Show when={review.preliminary}><span class="text-amber-200/80">{review.preliminary}</span></Show>
+										<Show when={review.reactions}><span class="text-slate-500">· {review.reactions} reactions</span></Show>
+										<Show when={review.url}><a href={review.url} target="_blank" rel="noopener noreferrer" class="text-sky-300 hover:underline">MAL ↗</a></Show>
+									</>
+								}
+							/>
 						)}</For>
 					</ul>
 				</Show>
@@ -310,10 +340,10 @@ function AnidbTab(props: { slug: string; details: AnidbDetails }) {
 				<Section title={`Recommendations (${d().recommendations?.length})`}>
 					<ul class="space-y-2 text-xs">
 						<For each={d().recommendations}>{(recommendation) => (
-							<li class="rounded-2xl border border-white/10 bg-white/5 p-3">
-								<span class="rounded-full bg-emerald-400/15 px-2 py-0.5 text-emerald-200">{recommendation.type}</span>
-								<p class="mt-2 whitespace-pre-wrap text-slate-300">{recommendation.text}</p>
-							</li>
+							<ExpandableCard
+								text={recommendation.text}
+								header={<span class="rounded-full bg-emerald-400/15 px-2 py-0.5 text-emerald-200">{recommendation.type}</span>}
+							/>
 						)}</For>
 					</ul>
 				</Section>
@@ -323,22 +353,28 @@ function AnidbTab(props: { slug: string; details: AnidbDetails }) {
 					<table class="w-full text-left text-xs text-slate-300">
 						<thead class="text-slate-500"><tr><th class="py-1 pr-2">#</th><th class="pr-2">Title</th><th class="pr-2">Aired</th><th class="pr-2">Min</th><th>Rating</th></tr></thead>
 						<tbody>
-							<For each={d().episodes}>{(episode) => (
-								<tr class="border-t border-white/5 align-top">
-									<td class="py-1 pr-2">{episode.number}</td>
-									<td class="pr-2">
-										<Show when={episode.summary} fallback={episode.title}>
-											<details>
-												<summary class="cursor-pointer">{episode.title}</summary>
+							<For each={d().episodes}>{(episode) => {
+								const [expanded, setExpanded] = createSignal(false)
+								return (
+									<tr class="border-t border-white/5 align-top">
+										<td class="py-1 pr-2">{episode.number}</td>
+										<td class="py-1 pr-2">
+											<div class="flex items-start justify-between gap-3">
+												<span>{episode.title}</span>
+												<Show when={episode.summary}>
+													<PillButton label={expanded() ? 'Collapse' : 'Summary'} onClick={() => setExpanded((current) => !current)} />
+												</Show>
+											</div>
+											<Show when={expanded()}>
 												<p class="mt-1 whitespace-pre-wrap text-slate-400">{episode.summary}</p>
-											</details>
-										</Show>
-									</td>
-									<td class="whitespace-nowrap pr-2">{episode.airDate}</td>
-									<td class="pr-2">{episode.lengthMinutes}</td>
-									<td>{episode.rating}</td>
-								</tr>
-							)}</For>
+											</Show>
+										</td>
+										<td class="whitespace-nowrap py-1 pr-2">{episode.airDate}</td>
+										<td class="py-1 pr-2">{episode.lengthMinutes}</td>
+										<td class="py-1">{episode.rating}</td>
+									</tr>
+								)
+							}}</For>
 						</tbody>
 					</table>
 				</Section>
