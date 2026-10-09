@@ -237,3 +237,110 @@ export interface QbittorrentFailuresFile {
 export interface QbittorrentAddResponsesFile {
 	items: QbittorrentAddApiResponseItem[]
 }
+
+// Everything the Nyaa /view/<id> page exposes, saved as data/YYYY-MM/<torrentId>.json
+// (YYYY-MM = month the torrent was first classified by NYAADL).
+export interface NyaaTorrentDetail {
+	torrentId: string
+	url: string
+	fetchedAtUtc: string
+	title: string
+	category?: string
+	categoryIds: string[]
+	publishedAtUtc?: string
+	submitter?: string
+	submitterRank?: string
+	information?: string
+	sizeText?: string
+	seeders?: number
+	leechers?: number
+	completed?: number
+	infoHash?: string
+	magnet?: string
+	descriptionMarkdown?: string
+	files: Array<{ path: string; sizeText?: string }>
+	comments: Array<{ user: string; postedAtUtc?: string; text: string }>
+}
+
+export interface TorrentDetailsPayload {
+	nyaa: NyaaTorrentDetail
+	// Set when `information` points at an erai-raws series: key of data/series/<slug>/.
+	seriesSlug?: string
+}
+
+// data/series/<slug>/erai.json
+export interface EraiRawsSeries {
+	url: string
+	slug: string
+	fetchedAtUtc: string
+	title: string
+	synopsis?: string
+	imageUrl?: string
+	links: Array<{ label: string; url: string }>
+}
+
+// data/series/<slug>/erai-releases.json
+export interface EraiRawsReleasesFile {
+	fetchedAtUtc: string
+	releases: EraiRawsRelease[]
+}
+
+export interface EraiRawsRelease {
+	type?: string
+	title: string
+	url?: string
+	releasedAt?: string
+	subtitles: string[]
+	variants: Array<{ resolution: string; sizeText?: string; source?: string }>
+}
+
+export interface EraiRawsSeriesDetails {
+	series: EraiRawsSeries
+	releases: EraiRawsRelease[]
+}
+
+// data/series/<slug>/mal.json
+export interface MalDetails {
+	url: string
+	fetchedAtUtc: string
+	title: string
+	englishTitle?: string
+	imageUrl?: string
+	score?: string
+	rank?: string
+	popularity?: string
+	members?: string
+	synopsis?: string
+	info: Array<{ label: string; value: string }>
+	videos: Array<{ title: string; youtubeId: string }>
+}
+
+// data/series/<slug>/anidb.json
+export interface AnidbDetails {
+	aid: string
+	url: string
+	fetchedAtUtc: string
+	titles: Array<{ type: string; lang: string; title: string }>
+	type?: string
+	episodeCount?: number
+	startDate?: string
+	endDate?: string
+	ratings: Array<{ kind: string; value: string; count?: number }>
+	tags: Array<{ name: string; weight: number }>
+	description?: string
+	imageUrl?: string
+}
+
+export type SeriesSource = 'erai' | 'mal' | 'anidb'
+
+export interface SeriesSourcePayload<T> {
+	data: T | null
+	// Why data is null (series has no link to that site).
+	reason?: string
+}
+
+export interface AnidbClientStatus {
+	configured: boolean
+	client?: string
+	clientver?: string
+}

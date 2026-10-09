@@ -1,27 +1,10 @@
 import path from 'node:path'
-import { readdir, stat } from 'node:fs/promises'
+import { readdir } from 'node:fs/promises'
 import { load } from 'cheerio'
-import type { EraiRawsStatus } from '@shared/types'
+import type { EraiRawsReleasesFile, EraiRawsSeriesDetails, EraiRawsStatus } from '@shared/types'
 import { dataRoot, readJsonFile, writeJsonFileAtomic } from '../storage/jsonStore'
+import { readSeriesJson, saveSeriesImage, seriesRoot, writeSeriesJson } from '../storage/seriesStore'
 import { withRetry } from './retryService'
-
-// The erai-raws.info series page (only visible when logged in), saved as data/erai-raws/<slug>.json.
-export interface EraiRawsSeries {
-	url: string
-	slug: string
-	fetchedAtUtc: string
-	title: string
-	synopsis?: string
-	links: Array<{ label: string; url: string }>
-	releases: Array<{
-		type?: string
-		title: string
-		url?: string
-		releasedAt?: string
-		subtitles: string[]
-		variants: Array<{ resolution: string; sizeText?: string; source?: string }>
-	}>
-}
 
 export interface EraiRawsSession {
 	cookie: string
@@ -30,16 +13,13 @@ export interface EraiRawsSession {
 
 export class EraiRawsAuthError extends Error {
 	constructor() {
-		super('erai-raws.info session is missing or expired')
+		super('erai-raws.info session is missing or expired: paste a fresh cookie in Execution state')
 	}
 }
 
 const sessionPath = path.join(dataRoot, 'erai-raws-session.json')
-const seriesDir = path.join(dataRoot, 'erai-raws')
 const homeUrl = 'https://www.erai-raws.info/'
 const loggedOutMarker = 'to see the content of the website'
-// ponytail: fixed TTL, the series page only grows once a week per episode
-const refreshAfterMs = 24 * 60 * 60 * 1000
 
 let session: EraiRawsSession | undefined
 let sessionLoaded = false
@@ -49,7 +29,7 @@ export function eraiSeriesSlug(url: string | undefined): string | null {
 	return /^https?:\/\/(?:www\.)?erai-raws\.info\/anime-list\/([a-z0-9-]+)\/?$/i.exec(url?.trim() ?? '')?.[1]?.toLowerCase() ?? null
 }
 
-export const eraiSeriesFilePath = (slug: string) => path.join(seriesDir, `${slug}.json`)
+export const eraiSeriesUrl = (slug: string) => `https://www.erai-raws.info/anime-list/${slug}/`
 
 export function readLoggedInUser(html: string): { loggedIn: boolean; user?: string } {
 	return {
@@ -58,7 +38,7 @@ export function readLoggedInUser(html: string): { loggedIn: boolean; user?: stri
 	}
 }
 
-export function parseEraiSeriesHtml(url: string, html: string, fetchedAtUtc = new Date().toISOString()): EraiRawsSeries {
+export function parseEraiSeriesHtml(url: string, html: string, fetchedAtUtc = new Date().toISOString()): EraiRawsSeriesDetails {
 	const $ = load(html)
 	const title = $('article h1.entry-title').first().text().trim()
 	if (!readLoggedInUser(html).loggedIn || !title) {
@@ -66,18 +46,21 @@ export function parseEraiSeriesHtml(url: string, html: string, fetchedAtUtc = ne
 	}
 	const clean = (text: string) => text.replace(/\s+/g, ' ').trim()
 	return {
-		url,
-		slug: eraiSeriesSlug(url) ?? '',
-		fetchedAtUtc,
-		title,
-		synopsis: clean($('.entry-content-story').first().text()) || undefined,
-		// RSS/torrent/magnet buttons carry the user's personal feed token, and the other erai-raws
-		// buttons are account pages (My Anime List, My Settings): keep NZB/SUB + external sites only.
-		links: $('a.entry-sub-content-buttons').toArray()
-			.map((a) => ({ label: clean($(a).text()), url: $(a).attr('href') ?? '' }))
-			.filter((link) => /^https?:\/\//.test(link.url)
-				&& !/[?&]token=/.test(link.url)
-				&& !/erai-raws\.info\/(?!nzbs\/|subs\/)/.test(link.url)),
+		series: {
+			url,
+			slug: eraiSeriesSlug(url) ?? '',
+			fetchedAtUtc,
+			title,
+			synopsis: clean($('.entry-content-story').first().text()) || undefined,
+			imageUrl: $('.entry-content-poster img').first().attr('src') || undefined,
+			// RSS/torrent/magnet buttons carry the user's personal feed token, and the other erai-raws
+			// buttons are account pages (My Anime List, My Settings): keep NZB/SUB + external sites only.
+			links: $('a.entry-sub-content-buttons').toArray()
+				.map((a) => ({ label: clean($(a).text()), url: $(a).attr('href') ?? '' }))
+				.filter((link) => /^https?:\/\//.test(link.url)
+					&& !/[?&]token=/.test(link.url)
+					&& !/erai-raws\.info\/(?!nzbs\/|subs\/)/.test(link.url)),
+		},
 		releases: $('#menu0 tbody').toArray().flatMap((tbody) => {
 			const $tbody = $(tbody)
 			const $title = $tbody.find('a.aa_ss_ops_new').first()
@@ -135,48 +118,22 @@ async function fetchEraiHtml(url: string): Promise<string> {
 	return html
 }
 
-export async function fetchEraiSeries(url: string): Promise<EraiRawsSeries> {
-	return parseEraiSeriesHtml(url, await fetchEraiHtml(url))
-}
-
-// Best effort, like archiveNyaaDetail: never blocks classification/download.
-export async function archiveEraiSeries(url: string | undefined): Promise<void> {
-	const slug = eraiSeriesSlug(url)
-	if (!slug || !url || !(await loadSession())) {
-		return
-	}
-	const filePath = eraiSeriesFilePath(slug)
-	const modifiedAt = await stat(filePath).then((info) => info.mtimeMs, () => 0)
-	if (Date.now() - modifiedAt < refreshAfterMs) {
-		return
-	}
-	try {
-		await writeJsonFileAtomic(filePath, await fetchEraiSeries(url))
-	} catch (error) {
-		console.warn(`Could not archive erai-raws series ${slug}: ${error instanceof Error ? error.message : String(error)}`)
-	}
-}
-
-// Every erai-raws series URL referenced by an archived Nyaa detail (data/YYYY-MM/<id>.json).
-export async function listArchivedEraiSeriesUrls(root = dataRoot): Promise<string[]> {
-	const months = (await readdir(root).catch(() => [])).filter((name) => /^\d{4}-\d{2}$/.test(name))
-	const urls = new Map<string, string>()
-	for (const month of months) {
-		for (const file of (await readdir(path.join(root, month))).filter((name) => name.endsWith('.json'))) {
-			const detail = await readJsonFile<{ information?: string }>(path.join(root, month, file), {})
-			const slug = eraiSeriesSlug(detail.information)
-			if (slug && detail.information) {
-				urls.set(slug, detail.information)
-			}
+// Cached in data/series/<slug>/ until `refresh` is asked for: fetched only when the user opens the Erai tab
+// (or the MAL/AniDB tab, which need its links).
+export async function getEraiSeries(slug: string, refresh = false): Promise<EraiRawsSeriesDetails> {
+	if (!refresh) {
+		const series = await readSeriesJson<EraiRawsSeriesDetails['series']>(slug, 'erai')
+		const releases = await readSeriesJson<EraiRawsReleasesFile>(slug, 'erai-releases')
+		if (series && releases) {
+			return { series, releases: releases.releases }
 		}
 	}
-	return [...urls.values()]
-}
-
-export async function backfillEraiSeries(): Promise<void> {
-	for (const url of await listArchivedEraiSeriesUrls()) {
-		await archiveEraiSeries(url)
-	}
+	const url = eraiSeriesUrl(slug)
+	const details = parseEraiSeriesHtml(url, await fetchEraiHtml(url))
+	await writeSeriesJson(slug, 'erai', details.series)
+	await writeSeriesJson<EraiRawsReleasesFile>(slug, 'erai-releases', { fetchedAtUtc: details.series.fetchedAtUtc, releases: details.releases })
+	await saveSeriesImage(slug, 'erai', details.series.imageUrl)
+	return details
 }
 
 export async function getEraiRawsStatus(): Promise<EraiRawsStatus> {
@@ -189,14 +146,12 @@ export async function saveEraiRawsSession(input: EraiRawsSession): Promise<EraiR
 	sessionLoaded = true
 	status = { configured: true, status: 'unknown' }
 	await writeJsonFileAtomic(sessionPath, session)
-	const [probeUrl] = await listArchivedEraiSeriesUrls()
+	// A series page shows the "logged in as" name; the home page doesn't.
+	const [knownSlug] = await readdir(seriesRoot).catch(() => [])
 	try {
-		await fetchEraiHtml(probeUrl ?? homeUrl)
+		await fetchEraiHtml(knownSlug ? eraiSeriesUrl(knownSlug) : homeUrl)
 	} catch (error) {
 		console.warn(`Could not test erai-raws session: ${error instanceof Error ? error.message : String(error)}`)
-	}
-	if (status.status === 'ok') {
-		void backfillEraiSeries()
 	}
 	return status
 }

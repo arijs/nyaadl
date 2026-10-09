@@ -1,35 +1,13 @@
 import path from 'node:path'
-import { stat } from 'node:fs/promises'
+import { readdir, stat } from 'node:fs/promises'
 import { load, type Cheerio, type CheerioAPI } from 'cheerio'
 import type { Element } from 'domhandler'
+import type { NyaaTorrentDetail } from '@shared/types'
 import { dataRoot, readJsonFile, writeJsonFileAtomic } from '../storage/jsonStore'
 import { decisionMonthKey } from '../storage/decisionStore'
-import { archiveEraiSeries } from './eraiRawsService'
 import { withRetry } from './retryService'
 
-// Everything the Nyaa /view/<id> page exposes, saved as data/YYYY-MM/<torrentId>.json
-// (YYYY-MM = month the torrent was processed by NYAADL).
-export interface NyaaTorrentDetail {
-	torrentId: string
-	url: string
-	fetchedAtUtc: string
-	title: string
-	category?: string
-	categoryIds: string[]
-	publishedAtUtc?: string
-	submitter?: string
-	submitterRank?: string
-	information?: string
-	sizeText?: string
-	seeders?: number
-	leechers?: number
-	completed?: number
-	infoHash?: string
-	magnet?: string
-	descriptionMarkdown?: string
-	files: Array<{ path: string; sizeText?: string }>
-	comments: Array<{ user: string; postedAtUtc?: string; text: string }>
-}
+export type { NyaaTorrentDetail }
 
 export const nyaaViewUrl = (torrentId: string) => `https://nyaa.si/view/${torrentId}`
 
@@ -93,8 +71,32 @@ export function parseNyaaDetailHtml(torrentId: string, html: string, fetchedAtUt
 	}
 }
 
-export function nyaaDetailFilePath(torrentId: string, processedAtUtc: string): string {
-	return path.join(dataRoot, decisionMonthKey(processedAtUtc), `${torrentId}.json`)
+export function nyaaDetailFilePath(torrentId: string, processedAtUtc: string, root = dataRoot): string {
+	return path.join(root, decisionMonthKey(processedAtUtc), `${torrentId}.json`)
+}
+
+async function listMonthDirs(root: string): Promise<string[]> {
+	return (await readdir(root).catch(() => [])).filter((name) => /^\d{4}-\d{2}$/.test(name))
+}
+
+// The month folder isn't derivable from a torrentId alone: look in every month.
+export async function findNyaaDetailFile(torrentId: string, root = dataRoot): Promise<string | undefined> {
+	for (const month of await listMonthDirs(root)) {
+		const filePath = path.join(root, month, `${torrentId}.json`)
+		if (await stat(filePath).then(() => true, () => false)) {
+			return filePath
+		}
+	}
+	return undefined
+}
+
+// ponytail: rescans the month folders on every call (one readdir per month); keep an in-memory Set if it gets slow.
+export async function listCachedNyaaDetailIds(root = dataRoot): Promise<string[]> {
+	const ids: string[] = []
+	for (const month of await listMonthDirs(root)) {
+		ids.push(...(await readdir(path.join(root, month))).flatMap((name) => /^(\d+)\.json$/.exec(name)?.[1] ?? []))
+	}
+	return ids
 }
 
 export async function fetchNyaaDetail(torrentId: string): Promise<NyaaTorrentDetail> {
@@ -110,20 +112,25 @@ export async function fetchNyaaDetail(torrentId: string): Promise<NyaaTorrentDet
 	return parseNyaaDetailHtml(torrentId, await response.text())
 }
 
-// Best effort: a failed detail fetch must never block classification/download.
-export async function archiveNyaaDetail(torrentId: string, processedAtUtc = new Date().toISOString()): Promise<void> {
-	const filePath = nyaaDetailFilePath(torrentId, processedAtUtc)
-	let information: string | undefined
-	if (await stat(filePath).then(() => true, () => false)) {
-		information = (await readJsonFile<Partial<NyaaTorrentDetail>>(filePath, {})).information
-	} else {
-		try {
-			const detail = await fetchNyaaDetail(torrentId)
-			await writeJsonFileAtomic(filePath, detail)
-			information = detail.information
-		} catch (error) {
-			console.warn(`Could not archive Nyaa details for ${torrentId}: ${error instanceof Error ? error.message : String(error)}`)
+export interface GetNyaaDetailOptions {
+	refresh?: boolean
+	// When the file doesn't exist yet: the month folder to create it in (first classification of the torrent).
+	processedAtUtc?: string
+	root?: string
+	fetchDetail?: (torrentId: string) => Promise<NyaaTorrentDetail>
+}
+
+// On demand (details modal): read the saved file, or fetch it from Nyaa once.
+export async function getNyaaDetail(torrentId: string, options: GetNyaaDetailOptions = {}): Promise<NyaaTorrentDetail> {
+	const root = options.root ?? dataRoot
+	const existing = await findNyaaDetailFile(torrentId, root)
+	if (existing && !options.refresh) {
+		const saved = await readJsonFile<NyaaTorrentDetail | undefined>(existing, undefined)
+		if (saved) {
+			return saved
 		}
 	}
-	await archiveEraiSeries(information)
+	const detail = await (options.fetchDetail ?? fetchNyaaDetail)(torrentId)
+	await writeJsonFileAtomic(existing ?? nyaaDetailFilePath(torrentId, options.processedAtUtc ?? new Date().toISOString(), root), detail)
+	return detail
 }

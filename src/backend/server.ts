@@ -4,12 +4,16 @@ import { toNodeHandler } from 'h3/node'
 import { mkdir, readFile } from 'node:fs/promises'
 import { advanceCheckpoint, determineScrapePages } from './services/checkpointService'
 import { discoverLastDownloadedCheckpointStep } from './services/bootstrapDiscoveryService'
-import { badRequest, notFound } from './services/apiErrorService'
+import { badRequest, notFound, upstreamError } from './services/apiErrorService'
 import { addWatchRoot, loadAliases, removeWatchRoot, validateWatchRootPath } from './services/watchlistService'
 import { downloadTorrentFile, findDownloadedTorrentFileById } from './services/downloaderService'
 import { getQbittorrentRuntimeConfig, updateQbittorrentRuntimeConfig } from './services/qbittorrentService'
 import { buildDailyReport } from './services/reportService'
-import { getEraiRawsStatus, saveEraiRawsSession } from './services/eraiRawsService'
+import { EraiRawsAuthError, eraiSeriesSlug, getEraiRawsStatus, getEraiSeries, saveEraiRawsSession } from './services/eraiRawsService'
+import { getMalDetails } from './services/malService'
+import { getAnidbClientStatus, getAnidbDetails, saveAnidbClient } from './services/anidbService'
+import { getNyaaDetail, listCachedNyaaDetailIds } from './services/nyaaDetailService'
+import { findSeriesImage, isSafeSeriesKey } from './storage/seriesStore'
 // If nyaaScraperServiceStream fails, you can use the cheerio version below
 // import { scrapeNyaaPage } from './services/nyaaScraperService'
 import { scrapeNyaaPage } from './services/nyaaScraperServiceStream'
@@ -48,7 +52,7 @@ import {
 	sanitizeInternalNames,
 	submitDownloadedTorrent,
 } from './services/decisionWorkflowService'
-import type { AppStatus, BlacklistEntry, DecisionRecord, LastProcessed, PendingItem, QbittorrentFailureItem, TorrentFilter, TorrentItem, WatchRootStatus, WatchTarget } from '@shared/types'
+import type { AppStatus, BlacklistEntry, DecisionRecord, LastProcessed, PendingItem, QbittorrentFailureItem, TorrentDetailsPayload, TorrentFilter,TorrentItem, WatchRootStatus, WatchTarget } from '@shared/types'
 
 const serverPort = 8900
 
@@ -358,6 +362,7 @@ async function main(): Promise<void> {
 				qbittorrentConfig: getQbittorrentRuntimeConfig(),
 				qbittorrentFailures: qbittorrentFailuresState,
 				eraiRaws: await getEraiRawsStatus(),
+				anidb: await getAnidbClientStatus(),
 			},
 		}
 	})
@@ -368,6 +373,69 @@ async function main(): Promise<void> {
 			throw badRequest('Missing erai-raws cookie')
 		}
 		return { success: true, data: await saveEraiRawsSession({ cookie: body.cookie, userAgent: body.userAgent ?? '' }) }
+	})
+
+	app.post('/api/anidb/client', async (event) => {
+		const body = await readBody<{ client?: string; clientver?: string }>(event).catch(() => undefined)
+		try {
+			return { success: true, data: await saveAnidbClient(body ?? {}) }
+		} catch (error) {
+			throw upstreamError(error, 400)
+		}
+	})
+
+	// Torrent/series details: never fetched up front, only when the details modal (or one of its tabs) is opened.
+	app.get('/api/details/cached', async () => ({ success: true, data: await listCachedNyaaDetailIds() }))
+
+	app.get('/api/torrents/:id/details', async (event) => {
+		const torrentId = event.context.params?.id ?? ''
+		if (!/^\d+$/.test(torrentId)) {
+			throw badRequest('Invalid torrent id')
+		}
+		try {
+			const nyaa = await getNyaaDetail(torrentId, {
+				refresh: getQuery(event).refresh === '1',
+				processedAtUtc: decisionsState.find((decision) => decision.torrentId === torrentId)?.createdAtUtc,
+			})
+			return { success: true, data: { nyaa, seriesSlug: eraiSeriesSlug(nyaa.information) ?? undefined } satisfies TorrentDetailsPayload }
+		} catch (error) {
+			throw upstreamError(error)
+		}
+	})
+
+	app.get('/api/series/:slug/images/:site', async (event) => {
+		const { slug, site } = event.context.params ?? {}
+		if (!isSafeSeriesKey(slug) || !isSafeSeriesKey(site)) {
+			throw badRequest('Invalid series image')
+		}
+		const image = await findSeriesImage(slug, site)
+		if (!image) {
+			throw notFound('Image not saved')
+		}
+		return new Response(await readFile(image.filePath), { headers: { 'content-type': image.contentType } })
+	})
+
+	app.get('/api/series/:slug/:source', async (event) => {
+		const { slug, source } = event.context.params ?? {}
+		if (!isSafeSeriesKey(slug)) {
+			throw badRequest('Invalid series slug')
+		}
+		const refresh = getQuery(event).refresh === '1'
+		try {
+			const data = source === 'erai' ? await getEraiSeries(slug, refresh)
+				: source === 'mal' ? await getMalDetails(slug, refresh)
+					: source === 'anidb' ? await getAnidbDetails(slug, refresh)
+						: undefined
+			if (data === undefined) {
+				throw badRequest(`Unknown source: ${source}`)
+			}
+			return { success: true, data: { data, reason: data ? undefined : `The erai-raws page has no ${source === 'mal' ? 'MyAnimeList' : 'AniDB'} link` } }
+		} catch (error) {
+			if (error instanceof Error && 'statusCode' in error) {
+				throw error
+			}
+			throw upstreamError(error, error instanceof EraiRawsAuthError ? 401 : 502)
+		}
 	})
 
 	app.post('/api/qbittorrent/config', async (event) => {

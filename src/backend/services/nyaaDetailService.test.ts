@@ -1,9 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { nyaaDetailFilePath, parseNyaaDetailHtml } from './nyaaDetailService'
+import { findNyaaDetailFile, getNyaaDetail, listCachedNyaaDetailIds, nyaaDetailFilePath, parseNyaaDetailHtml } from './nyaaDetailService'
 import { scrapeNyaaPageHtml } from './nyaaScraperServiceStream'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -52,6 +53,25 @@ test('parseNyaaDetailHtml flattens nested folders in the file list', () => {
 
 test('nyaaDetailFilePath groups details by processing month', () => {
 	assert.match(nyaaDetailFilePath('42', '2026-10-09T12:00:00.000Z'), /[\\/]data[\\/]2026-10[\\/]42\.json$/)
+})
+
+test('getNyaaDetail fetches once, then reads the saved file from any month', async () => {
+	const root = mkdtempSync(join(tmpdir(), 'nyaa-detail-'))
+	let fetches = 0
+	const fetchDetail = async (torrentId: string) => {
+		fetches += 1
+		return { torrentId, url: '', fetchedAtUtc: `fetch-${fetches}`, title: 'X', categoryIds: [], files: [], comments: [] }
+	}
+	const first = await getNyaaDetail('42', { root, fetchDetail, processedAtUtc: '2026-05-20T00:00:00.000Z' })
+	assert.equal(first.fetchedAtUtc, 'fetch-1')
+	assert.equal(await findNyaaDetailFile('42', root), join(root, '2026-05', '42.json'))
+	// No processedAtUtc now: still found in 2026-05, no second fetch.
+	assert.equal((await getNyaaDetail('42', { root, fetchDetail })).fetchedAtUtc, 'fetch-1')
+	assert.deepEqual(await listCachedNyaaDetailIds(root), ['42'])
+	// refresh rewrites the same file.
+	assert.equal((await getNyaaDetail('42', { root, fetchDetail, refresh: true })).fetchedAtUtc, 'fetch-2')
+	assert.equal((await getNyaaDetail('42', { root, fetchDetail })).fetchedAtUtc, 'fetch-2')
+	assert.equal(fetches, 2)
 })
 
 test('scrapeNyaaPageHtml reads the category of each list row', async () => {
