@@ -457,8 +457,16 @@ export default function TorrentDetailsModal(props: TorrentDetailsModalProps) {
 		&& !settled(nyaa)?.savedSources?.includes(id)
 		&& !fetchedNow(id)
 
-	// Featured image shown over the whole modal (tabs included); a click anywhere closes it.
+	// Featured image shown in place of the whole modal content (tabs included); a click anywhere closes it.
+	// Tabs and content stay mounted (just hidden) so their state survives the preview.
 	const [preview, setPreview] = createSignal<string>()
+	// The panel never shrinks for the preview; it grows up to its 90vh cap or the image's native size.
+	const [previewMinHeight, setPreviewMinHeight] = createSignal(0)
+	let panel: HTMLDivElement | undefined
+	const openPreview = (src: string) => {
+		setPreviewMinHeight(panel?.offsetHeight ?? 0)
+		setPreview(src)
+	}
 
 	const onKeyDown = (event: KeyboardEvent) => {
 		if (event.key !== 'Escape') {
@@ -475,15 +483,20 @@ export default function TorrentDetailsModal(props: TorrentDetailsModalProps) {
 
 	return (
 		<div class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm" onClick={(event) => event.target === event.currentTarget && props.onClose()}>
-			<div class="relative flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-slate-950 p-6 shadow-2xl shadow-black/40">
+			<div
+				ref={panel}
+				class="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-slate-950 p-6 shadow-2xl shadow-black/40"
+				style={preview() ? { 'min-height': `${previewMinHeight()}px` } : undefined}
+			>
 				<Show when={preview()}>
 					{(src) => (
-						<div class="absolute inset-0 z-10 flex cursor-zoom-out items-center justify-center bg-slate-950 p-4" title="Click to close the preview" onClick={() => setPreview(undefined)}>
-							<img src={src()} alt="" class="max-h-full max-w-full rounded-2xl object-contain" />
+						<div class="flex min-h-0 flex-1 cursor-zoom-out items-center justify-center" title="Click to close the preview" onClick={() => setPreview(undefined)}>
+							{/* Native size unless the 90vh panel (minus its 1.5rem padding and border) or its width is smaller. */}
+							<img src={src()} alt="" class="max-h-[calc(90vh-3rem-2px)] max-w-full rounded-2xl object-contain" />
 						</div>
 					)}
 				</Show>
-				<div class="flex items-center justify-between gap-4">
+				<div class="flex items-center justify-between gap-4" classList={{ hidden: Boolean(preview()) }}>
 					<div class="flex flex-wrap gap-2">
 						<For each={tabs}>{(entry) => {
 							const disabled = () => entry.id !== 'nyaa' && !slug()
@@ -505,7 +518,7 @@ export default function TorrentDetailsModal(props: TorrentDetailsModalProps) {
 					</div>
 					<button type="button" onClick={() => props.onClose()} aria-label="Close" class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-slate-300 hover:text-white">✕</button>
 				</div>
-				<div class="mt-4 min-h-0 overflow-y-auto pr-1">
+				<div class="mt-4 min-h-0 overflow-y-auto pr-1" classList={{ hidden: Boolean(preview()) }}>
 					<Switch>
 						<Match when={tab() === 'nyaa'}>
 							<TabState resource={nyaa} onRefresh={refreshNyaa} fetchedAtUtc={settled(nyaa)?.nyaa.fetchedAtUtc}>
@@ -515,21 +528,21 @@ export default function TorrentDetailsModal(props: TorrentDetailsModalProps) {
 						<Match when={tab() === 'erai' && slug()}>
 							{(key) => (
 								<TabState resource={erai} onRefresh={refreshErai} fetchedAtUtc={settled(erai)?.data?.series.fetchedAtUtc}>
-									{(payload) => (payload.data ? <EraiTab slug={key()} details={payload.data} onPreview={setPreview} /> : <MissingLink reason={payload.reason} />)}
+									{(payload) => (payload.data ? <EraiTab slug={key()} details={payload.data} onPreview={openPreview} /> : <MissingLink reason={payload.reason} />)}
 								</TabState>
 							)}
 						</Match>
 						<Match when={tab() === 'mal' && slug()}>
 							{(key) => (
 								<TabState resource={mal} onRefresh={refreshMal} fetchedAtUtc={settled(mal)?.data?.fetchedAtUtc}>
-									{(payload) => (payload.data ? <MalTab slug={key()} details={payload.data} onPreview={setPreview} /> : <MissingLink reason={payload.reason} />)}
+									{(payload) => (payload.data ? <MalTab slug={key()} details={payload.data} onPreview={openPreview} /> : <MissingLink reason={payload.reason} />)}
 								</TabState>
 							)}
 						</Match>
 						<Match when={tab() === 'anidb' && slug()}>
 							{(key) => (
 								<TabState resource={anidb} onRefresh={refreshAnidb} fetchedAtUtc={settled(anidb)?.data?.fetchedAtUtc}>
-									{(payload) => (payload.data ? <AnidbTab slug={key()} details={payload.data} onPreview={setPreview} /> : <MissingLink reason={payload.reason} />)}
+									{(payload) => (payload.data ? <AnidbTab slug={key()} details={payload.data} onPreview={openPreview} /> : <MissingLink reason={payload.reason} />)}
 								</TabState>
 							)}
 						</Match>
