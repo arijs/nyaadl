@@ -79,40 +79,57 @@ function SeriesImage(props: { slug: string; site: SeriesSource; version?: string
 	)
 }
 
-// Loading / error / empty states shared by every tab, plus the refresh button.
-function TabState<T>(props: { resource: Resource<T | undefined>; onRefresh: () => void; fetchedAtUtc?: string; children: (data: T) => JSX.Element }) {
+// "Saved <date>" + Refresh: sits at the right of the tab's title row.
+function TabToolbar(props: { loading: boolean; onRefresh: () => void; fetchedAtUtc?: string }) {
 	return (
-		<>
-			<div class="mb-3 flex items-center justify-end gap-3 text-xs text-slate-500">
-				<Show when={props.fetchedAtUtc}>
-					<span>Saved {formatDate(props.fetchedAtUtc)}</span>
-				</Show>
-				<button type="button" disabled={props.resource.loading} onClick={() => props.onRefresh()} class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-200 transition hover:border-amber-300/40 disabled:opacity-50">
-					Refresh
-				</button>
-			</div>
-			<Switch>
-				<Match when={props.resource.loading}>
-					<p class="py-10 text-center text-sm text-slate-400">Fetching…</p>
-				</Match>
-				<Match when={props.resource.error}>
-					<p class="rounded-2xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-100">
-						{props.resource.error instanceof Error ? props.resource.error.message : String(props.resource.error)}
-					</p>
-				</Match>
-				<Match when={settled(props.resource)}>
-					{(data) => props.children(data())}
-				</Match>
-			</Switch>
-		</>
+		<div class="flex shrink-0 items-center gap-3 text-xs text-slate-500">
+			<Show when={props.fetchedAtUtc}>
+				<span>Saved {formatDate(props.fetchedAtUtc)}</span>
+			</Show>
+			<button type="button" disabled={props.loading} onClick={() => props.onRefresh()} class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-200 transition hover:border-amber-300/40 disabled:opacity-50">
+				Refresh
+			</button>
+		</div>
 	)
 }
 
-function NyaaTab(props: { detail: TorrentDetailsPayload['nyaa'] }) {
+function TitleRow(props: { toolbar: JSX.Element; children: JSX.Element }) {
+	return (
+		<div class="flex items-start justify-between gap-3">
+			<h3 class="text-base font-semibold text-white">{props.children}</h3>
+			{props.toolbar}
+		</div>
+	)
+}
+
+// Loading / error / empty states shared by every tab. With data, the toolbar goes to the tab (title row);
+// without a title to sit next to (loading, error), it gets its own row.
+function TabState<T>(props: { resource: Resource<T | undefined>; onRefresh: () => void; fetchedAtUtc?: string; children: (data: T, toolbar: JSX.Element) => JSX.Element }) {
+	const toolbar = () => <TabToolbar loading={props.resource.loading} onRefresh={props.onRefresh} fetchedAtUtc={props.fetchedAtUtc} />
+	return (
+		<Switch>
+			<Match when={props.resource.loading}>
+				<div class="mb-3 flex justify-end">{toolbar()}</div>
+				<p class="py-10 text-center text-sm text-slate-400">Fetching…</p>
+			</Match>
+			<Match when={props.resource.error}>
+				<div class="mb-3 flex justify-end">{toolbar()}</div>
+				<p class="rounded-2xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-100">
+					{props.resource.error instanceof Error ? props.resource.error.message : String(props.resource.error)}
+				</p>
+			</Match>
+			<Match when={settled(props.resource)}>
+				{(data) => props.children(data(), toolbar())}
+			</Match>
+		</Switch>
+	)
+}
+
+function NyaaTab(props: { detail: TorrentDetailsPayload['nyaa']; toolbar: JSX.Element }) {
 	const d = () => props.detail
 	return (
 		<>
-			<h3 class="text-base font-semibold text-white">{d().title}</h3>
+			<TitleRow toolbar={props.toolbar}>{d().title}</TitleRow>
 			<dl class="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
 				<Field label="Category">{d().category ?? '—'}</Field>
 				<Field label="Published">{formatDate(d().publishedAtUtc) ?? '—'}</Field>
@@ -156,14 +173,14 @@ function NyaaTab(props: { detail: TorrentDetailsPayload['nyaa'] }) {
 	)
 }
 
-function EraiTab(props: { slug: string; details: EraiRawsSeriesDetails; onPreview: ImagePreview }) {
+function EraiTab(props: { slug: string; details: EraiRawsSeriesDetails; onPreview: ImagePreview; toolbar: JSX.Element }) {
 	const series = () => props.details.series
 	return (
 		<>
 			<div class="flex gap-4">
 				<SeriesImage slug={props.slug} site="erai" version={series().fetchedAtUtc} onPreview={props.onPreview} />
-				<div class="min-w-0">
-					<h3 class="text-base font-semibold text-white">{series().title}</h3>
+				<div class="min-w-0 flex-1">
+					<TitleRow toolbar={props.toolbar}>{series().title}</TitleRow>
 					<p class="mt-2 whitespace-pre-wrap text-sm text-slate-300">{series().synopsis}</p>
 					<div class="mt-3 flex flex-wrap gap-2 text-xs">
 						<a href={series().url} target="_blank" rel="noopener noreferrer" class="text-sky-300 hover:underline">erai-raws ↗</a>
@@ -220,7 +237,7 @@ function ExpandableCard(props: { header: JSX.Element; text: string }) {
 	)
 }
 
-function MalTab(props: { slug: string; details: MalDetails; onPreview: ImagePreview }) {
+function MalTab(props: { slug: string; details: MalDetails; onPreview: ImagePreview; toolbar: JSX.Element }) {
 	const d = () => props.details
 	const [playing, setPlaying] = createSignal<MalDetails['videos'][number]>()
 	const [showAllReviews, setShowAllReviews] = createSignal(false)
@@ -230,8 +247,8 @@ function MalTab(props: { slug: string; details: MalDetails; onPreview: ImagePrev
 		<>
 			<div class="flex gap-4">
 				<SeriesImage slug={props.slug} site="mal" version={d().fetchedAtUtc} onPreview={props.onPreview} />
-				<div class="min-w-0">
-					<h3 class="text-base font-semibold text-white">{d().title}</h3>
+				<div class="min-w-0 flex-1">
+					<TitleRow toolbar={props.toolbar}>{d().title}</TitleRow>
 					<Show when={d().englishTitle}><p class="text-sm text-slate-400">{d().englishTitle}</p></Show>
 					<div class="mt-2 flex flex-wrap gap-2 text-xs">
 						<For each={[['Score', d().score], ['Ranked', d().rank], ['Popularity', d().popularity], ['Members', d().members]].filter(([, value]) => value)}>
@@ -323,15 +340,15 @@ function verdictClass(verdict: string | undefined): string {
 // AniDB's own names for its rating kinds (as on the anime page).
 const anidbRatingLabels: Record<string, string> = { permanent: 'Rating', temporary: 'Average', review: 'Review rating' }
 
-function AnidbTab(props: { slug: string; details: AnidbDetails; onPreview: ImagePreview }) {
+function AnidbTab(props: { slug: string; details: AnidbDetails; onPreview: ImagePreview; toolbar: JSX.Element }) {
 	const d = () => props.details
 	const mainTitle = () => d().titles.find((title) => title.type === 'main')?.title ?? d().titles[0]?.title ?? `AniDB ${d().aid}`
 	return (
 		<>
 			<div class="flex gap-4">
 				<SeriesImage slug={props.slug} site="anidb" version={d().fetchedAtUtc} onPreview={props.onPreview} />
-				<div class="min-w-0">
-					<h3 class="text-base font-semibold text-white">{mainTitle()}</h3>
+				<div class="min-w-0 flex-1">
+					<TitleRow toolbar={props.toolbar}>{mainTitle()}</TitleRow>
 					<p class="text-xs text-slate-400">
 						{d().titles.filter((title) => title.type === 'official' || title.type === 'synonym').map((title) => `${title.title} (${title.lang})`).join(' · ')}
 					</p>
@@ -426,8 +443,13 @@ function AnidbTab(props: { slug: string; details: AnidbDetails; onPreview: Image
 	)
 }
 
-function MissingLink(props: { reason?: string }) {
-	return <p class="py-10 text-center text-sm text-slate-400">{props.reason ?? 'Nothing to show.'}</p>
+function MissingLink(props: { reason?: string; toolbar: JSX.Element }) {
+	return (
+		<>
+			<div class="flex justify-end">{props.toolbar}</div>
+			<p class="py-10 text-center text-sm text-slate-400">{props.reason ?? 'Nothing to show.'}</p>
+		</>
+	)
 }
 
 export default function TorrentDetailsModal(props: TorrentDetailsModalProps) {
@@ -522,27 +544,27 @@ export default function TorrentDetailsModal(props: TorrentDetailsModalProps) {
 					<Switch>
 						<Match when={tab() === 'nyaa'}>
 							<TabState resource={nyaa} onRefresh={refreshNyaa} fetchedAtUtc={settled(nyaa)?.nyaa.fetchedAtUtc}>
-								{(data) => <NyaaTab detail={data.nyaa} />}
+								{(data, toolbar) => <NyaaTab detail={data.nyaa} toolbar={toolbar} />}
 							</TabState>
 						</Match>
 						<Match when={tab() === 'erai' && slug()}>
 							{(key) => (
 								<TabState resource={erai} onRefresh={refreshErai} fetchedAtUtc={settled(erai)?.data?.series.fetchedAtUtc}>
-									{(payload) => (payload.data ? <EraiTab slug={key()} details={payload.data} onPreview={openPreview} /> : <MissingLink reason={payload.reason} />)}
+									{(payload, toolbar) => (payload.data ? <EraiTab slug={key()} details={payload.data} onPreview={openPreview} toolbar={toolbar} /> : <MissingLink reason={payload.reason} toolbar={toolbar} />)}
 								</TabState>
 							)}
 						</Match>
 						<Match when={tab() === 'mal' && slug()}>
 							{(key) => (
 								<TabState resource={mal} onRefresh={refreshMal} fetchedAtUtc={settled(mal)?.data?.fetchedAtUtc}>
-									{(payload) => (payload.data ? <MalTab slug={key()} details={payload.data} onPreview={openPreview} /> : <MissingLink reason={payload.reason} />)}
+									{(payload, toolbar) => (payload.data ? <MalTab slug={key()} details={payload.data} onPreview={openPreview} toolbar={toolbar} /> : <MissingLink reason={payload.reason} toolbar={toolbar} />)}
 								</TabState>
 							)}
 						</Match>
 						<Match when={tab() === 'anidb' && slug()}>
 							{(key) => (
 								<TabState resource={anidb} onRefresh={refreshAnidb} fetchedAtUtc={settled(anidb)?.data?.fetchedAtUtc}>
-									{(payload) => (payload.data ? <AnidbTab slug={key()} details={payload.data} onPreview={openPreview} /> : <MissingLink reason={payload.reason} />)}
+									{(payload, toolbar) => (payload.data ? <AnidbTab slug={key()} details={payload.data} onPreview={openPreview} toolbar={toolbar} /> : <MissingLink reason={payload.reason} toolbar={toolbar} />)}
 								</TabState>
 							)}
 						</Match>
