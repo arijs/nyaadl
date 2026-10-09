@@ -232,9 +232,46 @@ function MalTab(props: { slug: string; details: MalDetails }) {
 					<p class="whitespace-pre-wrap text-sm text-slate-300">{d().synopsis}</p>
 				</Section>
 			</Show>
+			<Section title={`Reviews (${d().reviews?.length ?? 0}, first page)`}>
+				<Show when={d().reviews} fallback={<p class="text-xs text-slate-500">Saved before reviews were collected — click Refresh to fetch them.</p>}>
+					<ul class="space-y-2">
+						<For each={d().reviews}>{(review) => (
+							<li class="rounded-2xl border border-white/10 bg-white/5 p-3 text-xs">
+								<details class="group">
+									<summary class="cursor-pointer list-none">
+										<div class="flex flex-wrap items-center gap-2">
+											<Show when={review.verdict}>
+												<span class={`rounded-full px-2 py-0.5 ${verdictClass(review.verdict)}`}>{review.verdict}</span>
+											</Show>
+											<Show when={review.score}><span class="font-semibold text-slate-100">{review.score}/10</span></Show>
+											<span class="text-slate-300">{review.user}</span>
+											<span class="text-slate-500">{review.postedAt}</span>
+											<Show when={review.preliminary}><span class="text-amber-200/80">{review.preliminary}</span></Show>
+											<Show when={review.reactions}><span class="text-slate-500">· {review.reactions} reactions</span></Show>
+											<Show when={review.url}><a href={review.url} target="_blank" rel="noopener noreferrer" class="ml-auto text-sky-300 hover:underline">MAL ↗</a></Show>
+										</div>
+										<p class="mt-1 line-clamp-3 text-slate-300 group-open:hidden">{review.text}</p>
+									</summary>
+									<p class="mt-2 whitespace-pre-wrap text-slate-300">{review.text}</p>
+								</details>
+							</li>
+						)}</For>
+					</ul>
+				</Show>
+			</Section>
 		</>
 	)
 }
+
+function verdictClass(verdict: string | undefined): string {
+	if (/not recommended/i.test(verdict ?? '')) {
+		return 'bg-rose-400/15 text-rose-200'
+	}
+	return /mixed/i.test(verdict ?? '') ? 'bg-amber-400/15 text-amber-200' : 'bg-emerald-400/15 text-emerald-200'
+}
+
+// AniDB's own names for its rating kinds (as on the anime page).
+const anidbRatingLabels: Record<string, string> = { permanent: 'Rating', temporary: 'Average', review: 'Review rating' }
 
 function AnidbTab(props: { slug: string; details: AnidbDetails }) {
 	const d = () => props.details
@@ -252,17 +289,81 @@ function AnidbTab(props: { slug: string; details: AnidbDetails }) {
 						<Field label="Type">{d().type ?? '—'}</Field>
 						<Field label="Episodes">{d().episodeCount ?? '—'}</Field>
 						<Field label="Aired">{d().startDate ?? '?'} → {d().endDate ?? '?'}</Field>
-						<For each={d().ratings}>{(rating) => <Field label={`Rating (${rating.kind})`}>{rating.value}{rating.count ? ` · ${rating.count} votes` : ''}</Field>}</For>
+						<Show when={d().season}><Field label="Season">{d().season}</Field></Show>
+						<For each={d().ratings}>{(rating) => <Field label={anidbRatingLabels[rating.kind] ?? rating.kind}>{rating.value}{rating.count ? ` (${rating.count})` : ''}</Field>}</For>
 					</dl>
 					<div class="mt-3 flex flex-wrap gap-1.5 text-[11px]">
-						<For each={d().tags}>{(tag) => <span class="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-slate-300">{tag.name}</span>}</For>
+						<For each={d().tags}>{(tag) => <span title={tag.description} class="cursor-help rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-slate-300">{tag.name}</span>}</For>
+					</div>
+					<div class="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs">
 						<a href={d().url} target="_blank" rel="noopener noreferrer" class="text-sky-300 hover:underline">AniDB ↗</a>
+						<For each={d().resources ?? []}>{(resource) => <a href={resource.url} target="_blank" rel="noopener noreferrer" class="text-sky-300 hover:underline">{resource.label} ↗</a>}</For>
 					</div>
 				</div>
 			</div>
 			<Show when={d().description}>
 				<Section title="Description">
 					<p class="whitespace-pre-wrap text-sm text-slate-300">{d().description}</p>
+				</Section>
+			</Show>
+			<Show when={d().recommendations?.length}>
+				<Section title={`Recommendations (${d().recommendations?.length})`}>
+					<ul class="space-y-2 text-xs">
+						<For each={d().recommendations}>{(recommendation) => (
+							<li class="rounded-2xl border border-white/10 bg-white/5 p-3">
+								<span class="rounded-full bg-emerald-400/15 px-2 py-0.5 text-emerald-200">{recommendation.type}</span>
+								<p class="mt-2 whitespace-pre-wrap text-slate-300">{recommendation.text}</p>
+							</li>
+						)}</For>
+					</ul>
+				</Section>
+			</Show>
+			<Show when={d().episodes?.length}>
+				<Section title={`Episodes (${d().episodes?.length})`}>
+					<table class="w-full text-left text-xs text-slate-300">
+						<thead class="text-slate-500"><tr><th class="py-1 pr-2">#</th><th class="pr-2">Title</th><th class="pr-2">Aired</th><th class="pr-2">Min</th><th>Rating</th></tr></thead>
+						<tbody>
+							<For each={d().episodes}>{(episode) => (
+								<tr class="border-t border-white/5 align-top">
+									<td class="py-1 pr-2">{episode.number}</td>
+									<td class="pr-2">
+										<Show when={episode.summary} fallback={episode.title}>
+											<details>
+												<summary class="cursor-pointer">{episode.title}</summary>
+												<p class="mt-1 whitespace-pre-wrap text-slate-400">{episode.summary}</p>
+											</details>
+										</Show>
+									</td>
+									<td class="whitespace-nowrap pr-2">{episode.airDate}</td>
+									<td class="pr-2">{episode.lengthMinutes}</td>
+									<td>{episode.rating}</td>
+								</tr>
+							)}</For>
+						</tbody>
+					</table>
+				</Section>
+			</Show>
+			<Show when={d().creators?.length}>
+				<Section title="Staff">
+					<dl class="grid grid-cols-2 gap-2 md:grid-cols-3">
+						<For each={d().creators}>{(creator) => <Field label={creator.role}>{creator.name}</Field>}</For>
+					</dl>
+				</Section>
+			</Show>
+			<Show when={d().characters?.length}>
+				<Section title="Characters">
+					<dl class="grid grid-cols-2 gap-2 md:grid-cols-3">
+						<For each={d().characters}>{(character) => <Field label={character.role}>{character.name}{character.seiyuu ? ` — ${character.seiyuu}` : ''}</Field>}</For>
+					</dl>
+				</Section>
+			</Show>
+			<Show when={d().related?.length}>
+				<Section title="Related anime">
+					<ul class="space-y-1 text-xs">
+						<For each={d().related}>{(anime) => (
+							<li><span class="text-slate-500">{anime.relation}:</span> <a href={`https://anidb.net/anime/${anime.aid}`} target="_blank" rel="noopener noreferrer" class="text-sky-300 hover:underline">{anime.title} ↗</a></li>
+						)}</For>
+					</ul>
 				</Section>
 			</Show>
 		</>
