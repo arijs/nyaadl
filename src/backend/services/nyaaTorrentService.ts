@@ -4,6 +4,7 @@ import { dataRoot, ensureDirectory } from '../storage/jsonStore'
 import type { DecisionStatus, TorrentItem, WatchTarget } from '@shared/types'
 import { buildTorrentVideoFiles, findExistingLocalMatch } from './localLibraryService'
 import { buildMatchCandidates } from './normalizeService'
+import { archiveNyaaDetail } from './nyaaDetailService'
 import { buildNyaaSnapshotFolderName } from './nyaaQueryService'
 import { parseTorrentMetainfo } from './torrentMetainfoService'
 import { buildTorrentMatchResult, isTorrentBlacklisted, matchTorrentToWatchTargets } from './matchingService'
@@ -34,6 +35,7 @@ export interface ClassifiedTorrent extends TorrentItem {
 }
 
 export async function inspectAndClassifyTorrent(item: TorrentItem, aliases: Record<string, string>, watchTargets: WatchTarget[], blacklist: string[]): Promise<ClassifiedTorrent> {
+	await archiveNyaaDetail(item.torrentId)
 	const torrentBuffer = await fetchTorrentBuffer(`${nyaaBaseUrl}${item.downloadUrl}`)
 	const metainfo = await parseTorrentMetainfo(torrentBuffer)
 	const internalNames = metainfo.videoNames.length > 0 ? metainfo.videoNames : [metainfo.name]
