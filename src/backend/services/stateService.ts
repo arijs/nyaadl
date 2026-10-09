@@ -115,6 +115,11 @@ export async function saveDecisions(items: DecisionRecord[]): Promise<void> {
 	await decisionStore.save(items)
 }
 
+// Already persisted records mutated in place (backfill): their months are rewritten on the next saveDecisions.
+export function markDecisionsDirty(records: DecisionRecord[]): void {
+	decisionStore.markDirty(records)
+}
+
 export async function loadQbittorrentFailures(): Promise<QbittorrentFailureItem[]> {
 	const file = await readJsonFile<QbittorrentFailuresFile>(qbittorrentFailuresPath, { items: [] }, isQbittorrentFailuresFile)
 	return file.items

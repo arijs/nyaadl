@@ -13,6 +13,7 @@ import { buildDailyReport } from './services/reportService'
 // import { scrapeNyaaPage } from './services/nyaaScraperService'
 import { scrapeNyaaPage } from './services/nyaaScraperServiceStream'
 import { inspectAndClassifyTorrent, savePageSnapshot } from './services/nyaaTorrentService'
+import { applyTorrentItemBackfill, backfillFromLocalSnapshots } from './services/decisionBackfillService'
 import { parseTorrentMetainfo } from './services/torrentMetainfoService'
 import { loadBlacklist, saveBlacklist, saveBootstrapDiscovery, saveDecisions, saveLastProcessed, savePending, saveQbittorrentSubmitted } from './services/stateService'
 import { buildNormalizedKey, deriveSeriesBase, deriveFolderNameFromTitle } from './services/normalizeService'
@@ -194,6 +195,7 @@ async function runScrapeForPage(page: number, bootstrapMode: LastProcessed['boot
 	const aliases = await loadAliases()
 	const { html, items } = await scrapeNyaaPage(page)
 	await savePageSnapshot(page, html, items)
+	await applyTorrentItemBackfill(items)
 	const processedTorrentIds = listDecisionTorrentIds(decisionsState)
 	const pendingTorrentIds = listPendingTorrentIds(pendingState)
 	const qbittorrentFailedIds = listFailedQbittorrentIds()
@@ -326,6 +328,7 @@ async function suppressQbittorrentFailureById(torrentId: string): Promise<Decisi
 
 async function main(): Promise<void> {
 	await ensureInitialData()
+	await backfillFromLocalSnapshots()
 	await refreshWatchRoots()
 	await refreshWatchTargets()
 	hydrateDownloadedTorrents()

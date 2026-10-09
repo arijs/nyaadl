@@ -17,6 +17,7 @@ import {
 	submitDownloadedTorrent,
 } from './decisionWorkflowService'
 import { downloadTorrentFile, findDownloadedTorrentFileById } from './downloaderService'
+import { applyTorrentItemBackfill } from './decisionBackfillService'
 import { findExistingLocalMatchByTitle, type ExistingLocalMatch } from './localLibraryService'
 import { buildTorrentMatchResult, isTorrentBlacklisted, matchTorrentToWatchTargets } from './matchingService'
 import { scrapeNyaaPage } from './nyaaScraperServiceStream'
@@ -588,6 +589,7 @@ export async function discoverLastDownloadedCheckpointStep(
 
 	const { html, items } = await scrapeNyaaPage(page, customQuery)
 	await savePageSnapshot(page, html, items, customQuery)
+	await applyTorrentItemBackfill(items)
 	const nyaaResultsStats = parseNyaaResultsStats(html)
 	const pageCursorToken = `${queryKey}:${page}:${items.length}:${items[0]?.torrentId ?? 'none'}:${items[items.length - 1]?.torrentId ?? 'none'}`
 
