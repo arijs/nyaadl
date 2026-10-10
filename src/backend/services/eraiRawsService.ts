@@ -94,7 +94,7 @@ async function loadSession(): Promise<EraiRawsSession | undefined> {
 	return session
 }
 
-async function fetchEraiHtml(url: string): Promise<string> {
+export async function fetchEraiHtml(url: string): Promise<string> {
 	const current = await loadSession()
 	if (!current) {
 		throw new EraiRawsAuthError()

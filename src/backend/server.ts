@@ -9,7 +9,8 @@ import { addWatchRoot, loadAliases, removeWatchRoot, validateWatchRootPath } fro
 import { downloadTorrentFile, findDownloadedTorrentFileById } from './services/downloaderService'
 import { getQbittorrentRuntimeConfig, updateQbittorrentRuntimeConfig } from './services/qbittorrentService'
 import { buildDailyReport } from './services/reportService'
-import { EraiRawsAuthError, eraiSeriesSlug, getEraiRawsStatus, getEraiSeries, saveEraiRawsSession } from './services/eraiRawsService'
+import { EraiRawsAuthError, getEraiRawsStatus, getEraiSeries, saveEraiRawsSession } from './services/eraiRawsService'
+import { resolveEraiSeriesSlug } from './services/eraiAnimeListService'
 import { getMalDetails } from './services/malService'
 import { getAnidbClientStatus, getAnidbDetails, saveAnidbClient } from './services/anidbService'
 import { getNyaaDetail, listCachedNyaaDetailIds } from './services/nyaaDetailService'
@@ -414,7 +415,9 @@ async function main(): Promise<void> {
 				refresh: getQuery(event).refresh === '1',
 				processedAtUtc: decisionsState.find((decision) => decision.torrentId === torrentId)?.createdAtUtc,
 			})
-			const seriesSlug = eraiSeriesSlug(nyaa.information) ?? undefined
+			// The series page from the "Information" link, or by title in erai-raws' Anime List (older releases link
+			// only to the home page). A failed list lookup (e.g. no erai session) just leaves the series tabs off.
+			const seriesSlug = await resolveEraiSeriesSlug(nyaa).catch(() => undefined)
 			const savedSources = seriesSlug ? await listSavedSeriesSources(seriesSlug, ['erai', 'mal', 'anidb'] as const) : undefined
 			return { success: true, data: { nyaa, seriesSlug, savedSources } satisfies TorrentDetailsPayload }
 		} catch (error) {

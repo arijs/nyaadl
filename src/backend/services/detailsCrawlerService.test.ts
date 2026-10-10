@@ -14,7 +14,7 @@ import {
 	type CrawlDeps,
 	type CrawlTargetResult,
 } from './detailsCrawlerService'
-import { EraiRawsAuthError } from './eraiRawsService'
+import { EraiRawsAuthError, eraiSeriesSlug } from './eraiRawsService'
 
 function target(root: string, folderName: string): WatchTarget {
 	return { folderName, folderPath: `${root}\\${folderName}`, seriesKey: folderName, resolution: '480p', normalizedKey: folderName, matchCandidates: [folderName] }
@@ -64,8 +64,9 @@ function fakeDeps(overrides: Partial<CrawlDeps> = {}): CrawlDeps & { calls: stri
 		hasNyaaDetail: async () => true,
 		getNyaaDetail: async (torrentId) => {
 			calls.push(`nyaa:${torrentId}`)
-			return { information: eraiInfo }
+			return { information: eraiInfo, title: '[Erai-raws] Magical Explorer - 01 [480p CR WEB-DL AVC AAC][MultiSub][3FBF46B7]' }
 		},
+		resolveSlug: async (detail) => eraiSeriesSlug(detail.information) ?? undefined,
 		savedSeriesSources: async () => ['erai', 'erai-releases', 'mal', 'anidb'],
 		readEraiSeries: async () => ({ links: [malLink, anidbLink] }),
 		getEraiSeries: async (slug) => calls.push(`erai:${slug}`),
@@ -154,8 +155,35 @@ test('crawlTarget reports targets without a torrent id and Nyaa pages without an
 	assert.equal(noTorrent.steps.nyaa, 'no-torrent')
 	assert.equal(noTorrent.usedNetwork, false)
 
-	const noSlug = await crawlTarget(target('Q:\\x', 'Other group [480p]'), fakeDeps({ getNyaaDetail: async () => ({ information: 'https://example.com/' }) }), { anidbEnabled: true })
+	const noSlug = await crawlTarget(target('Q:\\x', 'Other group [480p]'), fakeDeps({ getNyaaDetail: async () => ({ information: 'https://example.com/', title: '[VARYG] Other [1080p]' }) }), { anidbEnabled: true })
 	assert.deepEqual(noSlug.steps, { nyaa: 'cached', erai: 'no-link', mal: 'no-link', anidb: 'no-link' })
+})
+
+// Regression: older Erai-raws torrents link only to the site's home page; the slug now comes from the Anime List.
+test('crawlTarget uses the slug the resolver finds by title when the Nyaa link is not a series page', async () => {
+	const seen: Array<{ information?: string; title: string }> = []
+	const deps = fakeDeps({
+		getNyaaDetail: async () => ({ information: 'https://www.erai-raws.info', title: '[Erai-raws] Sunohara-sou no Kanrinin-san - 01 [720p]' }),
+		resolveSlug: async (detail) => {
+			seen.push(detail)
+			return 'sunohara-sou-no-kanrinin-san'
+		},
+	})
+	const result = await crawlTarget(target('Q:\\2018.3 Verão', '[Erai-raws] Sunohara-sou no Kanrinin-san [720p]'), deps, { anidbEnabled: true })
+	assert.equal(seen[0]?.information, 'https://www.erai-raws.info')
+	assert.equal(result.slug, 'sunohara-sou-no-kanrinin-san')
+	assert.deepEqual(result.steps, { nyaa: 'cached', erai: 'cached', mal: 'cached', anidb: 'cached' })
+})
+
+test('crawlTarget stops the run when the Anime List lookup finds the erai-raws session expired', async () => {
+	const deps = fakeDeps({
+		resolveSlug: async () => {
+			throw new EraiRawsAuthError()
+		},
+	})
+	const result = await crawlTarget(target('Q:\\x', 'A [720p]'), deps, { anidbEnabled: true })
+	assert.equal(result.steps.erai, 'error')
+	assert.match(result.fatal ?? '', /session/)
 })
 
 test('crawlTarget keeps an AniDB error to its own step and turns AniDB off for the run when banned', async () => {

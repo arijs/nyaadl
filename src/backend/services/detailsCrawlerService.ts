@@ -2,7 +2,8 @@ import path from 'node:path'
 import type { DetailsCrawlerEntry, DetailsCrawlerSource, DetailsCrawlerStatus, DetailsCrawlerStepResult, WatchTargetFile } from '@shared/api'
 import type { DecisionRecord, DecisionStatus, EraiRawsSeries, QbittorrentAddApiResponseItem, WatchTarget } from '@shared/types'
 import { getAnidbClientStatus, getAnidbDetails, anidbAnimeId } from './anidbService'
-import { EraiRawsAuthError, eraiSeriesSlug, getEraiSeries } from './eraiRawsService'
+import { resolveEraiSeriesSlug } from './eraiAnimeListService'
+import { EraiRawsAuthError, getEraiSeries } from './eraiRawsService'
 import { getMalDetails, malAnimeId } from './malService'
 import { findNyaaDetailFile, getNyaaDetail } from './nyaaDetailService'
 import { extractReleaseFingerprint } from './localLibraryService'
@@ -78,6 +79,8 @@ export function findTargetTorrents(
 	return [...sent, ...indexed, ...decided]
 }
 
+type NyaaDetailForSlug = { information?: string; title: string }
+
 export interface CrawlDeps {
 	listFiles: (target: WatchTarget) => Promise<WatchTargetFile[]>
 	findIndexedNyaaId: (filePath: string) => string | undefined
@@ -86,7 +89,8 @@ export interface CrawlDeps {
 	findFolderTorrents: (target: WatchTarget) => FolderTorrent[]
 	processedAtUtc: (torrentId: string) => string | undefined
 	hasNyaaDetail: (torrentId: string) => Promise<boolean>
-	getNyaaDetail: (torrentId: string, processedAtUtc: string | undefined) => Promise<{ information?: string }>
+	getNyaaDetail: (torrentId: string, processedAtUtc: string | undefined) => Promise<NyaaDetailForSlug>
+	resolveSlug: (detail: NyaaDetailForSlug) => Promise<string | undefined>
 	savedSeriesSources: (slug: string) => Promise<string[]>
 	readEraiSeries: (slug: string) => Promise<Pick<EraiRawsSeries, 'links'> | undefined>
 	getEraiSeries: (slug: string) => Promise<unknown>
@@ -129,15 +133,22 @@ export async function crawlTarget(target: WatchTarget, deps: CrawlDeps, options:
 		return result
 	}
 
-	let information: string | undefined
+	let detail: NyaaDetailForSlug
 	try {
 		result.steps.nyaa = (await deps.hasNyaaDetail(result.torrentId)) ? 'cached' : 'fetched'
-		information = (await deps.getNyaaDetail(result.torrentId, deps.processedAtUtc(result.torrentId))).information
+		detail = await deps.getNyaaDetail(result.torrentId, deps.processedAtUtc(result.torrentId))
 	} catch (error) {
 		fail('nyaa', error)
+		return finish(result)
 	}
-	result.slug = eraiSeriesSlug(information) ?? undefined
-	if (result.steps.nyaa === 'error') {
+	// From the Nyaa "Information" link, or by title in erai-raws' Anime List when the link isn't a series page.
+	try {
+		result.slug = await deps.resolveSlug(detail)
+	} catch (error) {
+		fail('erai', error)
+		if (error instanceof EraiRawsAuthError) {
+			result.fatal = error.message
+		}
 		return finish(result)
 	}
 	if (!result.slug) {
@@ -268,6 +279,7 @@ const appCrawlDeps: CrawlDeps = {
 	processedAtUtc: (torrentId) => decisionsState.find((decision) => decision.torrentId === torrentId)?.createdAtUtc,
 	hasNyaaDetail: async (torrentId) => Boolean(await findNyaaDetailFile(torrentId)),
 	getNyaaDetail: (torrentId, processedAtUtc) => getNyaaDetail(torrentId, { processedAtUtc }),
+	resolveSlug: (detail) => resolveEraiSeriesSlug(detail),
 	savedSeriesSources: (slug) => listSavedSeriesSources(slug, ['erai', 'erai-releases', 'mal', 'anidb'] as const),
 	readEraiSeries: (slug) => readSeriesJson<EraiRawsSeries>(slug, 'erai'),
 	getEraiSeries: (slug) => getEraiSeries(slug),
