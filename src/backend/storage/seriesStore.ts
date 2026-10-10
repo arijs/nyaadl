@@ -10,7 +10,8 @@ const contentTypes = Object.fromEntries(Object.entries(imageExtensions).map(([ty
 
 // Slugs and site names come from URLs: reject anything that could escape data/series/.
 export function isSafeSeriesKey(value: string | undefined): value is string {
-	return typeof value === 'string' && /^[a-z0-9][a-z0-9-]*$/.test(value)
+	// Underscores appear in real erai-raws slugs ("29_sai-dokushin-chuuken-boukensha-no-nichijou").
+	return typeof value === 'string' && /^[a-z0-9][a-z0-9_-]*$/.test(value)
 }
 
 function seriesDir(slug: string, root: string): string {

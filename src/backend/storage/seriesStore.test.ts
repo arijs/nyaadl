@@ -36,6 +36,8 @@ test('saveSeriesImage names the file by content-type and replaces the previous o
 
 test('isSafeSeriesKey rejects path traversal', async () => {
 	assert.equal(isSafeSeriesKey('replica-datte-koi-wo-suru'), true)
+	assert.equal(isSafeSeriesKey('29_sai-dokushin-chuuken-boukensha-no-nichijou'), true)
+	assert.equal(isSafeSeriesKey('_hidden'), false)
 	assert.equal(isSafeSeriesKey('../secrets'), false)
 	assert.equal(isSafeSeriesKey('a/b'), false)
 	assert.equal(isSafeSeriesKey(''), false)

@@ -26,7 +26,7 @@ let sessionLoaded = false
 let status: EraiRawsStatus = { configured: false, status: 'unknown' }
 
 export function eraiSeriesSlug(url: string | undefined): string | null {
-	return /^https?:\/\/(?:www\.)?erai-raws\.info\/anime-list\/([a-z0-9-]+)\/?$/i.exec(url?.trim() ?? '')?.[1]?.toLowerCase() ?? null
+	return /^https?:\/\/(?:www\.)?erai-raws\.info\/anime-list\/([a-z0-9][a-z0-9_-]*)\/?$/i.exec(url?.trim() ?? '')?.[1]?.toLowerCase() ?? null
 }
 
 export const eraiSeriesUrl = (slug: string) => `https://www.erai-raws.info/anime-list/${slug}/`

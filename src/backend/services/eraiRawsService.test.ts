@@ -59,6 +59,8 @@ test('parseEraiSeriesHtml rejects the logged-out page', () => {
 test('eraiSeriesSlug only accepts erai-raws series pages', () => {
 	assert.equal(eraiSeriesSlug(seriesUrl), 'replica-datte-koi-wo-suru')
 	assert.equal(eraiSeriesSlug('https://erai-raws.info/anime-list/chii-fuyo'), 'chii-fuyo')
+	// Regression: torrent #2064010's series page has an underscore, and its Erai/MAL/AniDB tabs were disabled.
+	assert.equal(eraiSeriesSlug('https://www.erai-raws.info/anime-list/29_sai-dokushin-chuuken-boukensha-no-nichijou/'), '29_sai-dokushin-chuuken-boukensha-no-nichijou')
 	assert.equal(eraiSeriesSlug('https://www.erai-raws.info/episodes/chii-fuyo-01/'), null)
 	assert.equal(eraiSeriesSlug('https://example.com/anime-list/chii-fuyo/'), null)
 	assert.equal(eraiSeriesSlug(undefined), null)
