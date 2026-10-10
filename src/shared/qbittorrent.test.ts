@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { isQbittorrentAddSuccess } from './qbittorrent.js'
+import { isQbittorrentAddSuccess, QBITTORRENT_ALREADY_PRESENT } from './qbittorrent.js'
+
+test('isQbittorrentAddSuccess accepts a torrent that was already in qBittorrent', () => {
+	assert.equal(isQbittorrentAddSuccess(QBITTORRENT_ALREADY_PRESENT), true)
+})
 
 test('isQbittorrentAddSuccess accepts legacy plain-text and 5.2+ JSON responses', () => {
 	assert.equal(isQbittorrentAddSuccess('Ok.'), true)

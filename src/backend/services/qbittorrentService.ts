@@ -1,7 +1,8 @@
 import path from 'node:path'
 import { readFile } from 'node:fs/promises'
 import type { QbittorrentFailureKind, QbittorrentRuntimeConfig } from '@shared/types'
-import { isQbittorrentAddSuccess } from '@shared/qbittorrent'
+import { isQbittorrentAddSuccess, QBITTORRENT_ALREADY_PRESENT } from '@shared/qbittorrent'
+import parseTorrent from 'parse-torrent'
 
 const qbittorrentPasswordPath = path.join(process.cwd(), 'qbittorrent password.txt')
 
@@ -147,18 +148,45 @@ async function postTorrentAdd(form: FormData, cookieHeader?: string): Promise<Re
 	}
 }
 
+// qBittorrent answers torrents/add with 409 when it adds nothing, without saying why; look the torrent up by info hash.
+async function isTorrentInQbittorrent(torrentFilePath: string, cookieHeader?: string): Promise<boolean> {
+	const { infoHash } = await parseTorrent(await readFile(torrentFilePath)) as { infoHash?: string }
+	if (!infoHash) {
+		return false
+	}
+	const response = await fetch(`${qbittorrentRuntimeState.baseUrl}/api/v2/torrents/info?hashes=${infoHash}`, {
+		headers: cookieHeader ? { cookie: cookieHeader } : undefined,
+		signal: AbortSignal.timeout(7000),
+	}).catch(() => undefined)
+	if (!response?.ok) {
+		return false
+	}
+	const torrents: unknown = await response.json().catch(() => [])
+	return Array.isArray(torrents) && torrents.length > 0
+}
+
 export async function addTorrentToQbittorrent(input: AddTorrentInput): Promise<QbittorrentAddResult> {
+	let cookieHeader: string | undefined
 	let response = await postTorrentAdd(await buildAddTorrentForm(input))
 
 	if (response.status === 401 || response.status === 403) {
 		cachedSidCookie = undefined
-		const sidCookie = await loadSidCookie().catch((error: unknown) => {
+		cookieHeader = await loadSidCookie().catch((error: unknown) => {
 			throw classifyNetworkError(error)
 		})
-		if (!sidCookie) {
+		if (!cookieHeader) {
 			throw new QbittorrentRequestError('qBittorrent requires authentication before adding torrents.', 'auth', 'Provide qBittorrent Web UI credentials and retry the failed torrent.')
 		}
-		response = await postTorrentAdd(await buildAddTorrentForm(input), sidCookie)
+		response = await postTorrentAdd(await buildAddTorrentForm(input), cookieHeader)
+	}
+
+	if (response.status === 409 && await isTorrentInQbittorrent(input.torrentFilePath, cookieHeader)) {
+		return {
+			ok: true,
+			status: response.status,
+			statusText: response.statusText,
+			responseText: QBITTORRENT_ALREADY_PRESENT,
+		}
 	}
 
 	if (!response.ok) {

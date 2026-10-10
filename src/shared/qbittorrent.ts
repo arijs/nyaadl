@@ -1,8 +1,11 @@
+// Recorded instead of qBittorrent's answer when the add was refused (409) because the torrent is already in qBittorrent.
+export const QBITTORRENT_ALREADY_PRESENT = 'Already in qBittorrent.'
+
 // qBittorrent <= 5.1 answers torrents/add with plain "Ok." / "Fails.";
 // 5.2+ answers JSON: {"added_torrent_ids":[],"failure_count":0,"pending_count":0,"success_count":1}
 export function isQbittorrentAddSuccess(text: string | undefined): boolean {
 	const value = text?.trim() ?? ''
-	if (value === 'Ok.') {
+	if (value === 'Ok.' || value === QBITTORRENT_ALREADY_PRESENT) {
 		return true
 	}
 	if (!value.startsWith('{')) {
