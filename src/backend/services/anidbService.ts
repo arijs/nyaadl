@@ -14,7 +14,9 @@ interface AnidbClient {
 }
 
 const clientPath = path.join(dataRoot, 'anidb-client.json')
-const minIntervalMs = 2000
+// AniDB asks for at most one request every 2s; even ~3s apart a long run (the details downloader) got banned,
+// so keep a wider gap.
+const minIntervalMs = 5000
 // AniDB bans clients that request the same anime more than once a day.
 const sameAnimeIntervalMs = 24 * 60 * 60 * 1000
 let nextRequestAt = 0
