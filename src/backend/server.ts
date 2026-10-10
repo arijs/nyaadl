@@ -26,7 +26,17 @@ import { buildSkippedDecisions, listDecisionTorrentIds, listPendingTorrentIds } 
 import { buildTorrentHistoryPage } from './services/torrentHistoryService'
 import { buildBlacklistPage, parseBlacklistEntry } from './services/blacklistService'
 import { buildWatchTargetPage } from './services/watchTargetService'
-import { listWatchTargetFiles } from './services/watchTargetFilesService'
+import { attachQbittorrentTorrents, listWatchTargetFiles } from './services/watchTargetFilesService'
+import {
+	checkNewQbittorrentTorrents,
+	fetchLiveQbittorrentTorrents,
+	findIndexedTorrentByPath,
+	getIndexStatus,
+	getQbittorrentIndex,
+	initQbittorrentIndex,
+	rebuildQbittorrentIndex,
+} from './services/qbittorrentIndexService'
+import type { WatchTargetFilesResponse } from '@shared/api'
 import { countMatchingLocalFiles, analyzeFingerprintCombos } from './services/localLibraryService'
 import {
 	blacklistState,
@@ -345,6 +355,9 @@ async function main(): Promise<void> {
 	await refreshWatchRoots()
 	await refreshWatchTargets()
 	hydrateDownloadedTorrents()
+	await initQbittorrentIndex()
+	// Picks up torrents added to qBittorrent while the app was closed (one sorted page, a few seconds, in the background).
+	void checkNewQbittorrentTorrents().catch(() => undefined)
 
 	const app = new H3({
 		onError(error, event) {
@@ -543,7 +556,22 @@ async function main(): Promise<void> {
 		if (!target) {
 			throw notFound('Watch target not found')
 		}
-		return { success: true, data: await listWatchTargetFiles(target, decisionsState, body?.comboKey) }
+		const files = await listWatchTargetFiles(target, decisionsState, body?.comboKey)
+		const qbittorrentError = await attachQbittorrentTorrents(files, target.folderPath, {
+			findByPath: (filePath) => findIndexedTorrentByPath(getQbittorrentIndex(), filePath),
+			checkNewTorrents: () => checkNewQbittorrentTorrents(),
+			fetchLive: fetchLiveQbittorrentTorrents,
+		})
+		const data: WatchTargetFilesResponse = { files, qbittorrentIndex: getIndexStatus(getQbittorrentIndex()), qbittorrentError }
+		return { success: true, data }
+	})
+	// Manual only: downloads qBittorrent's whole torrent list and replaces the local index.
+	app.post('/api/qbittorrent/index/rebuild', async () => {
+		try {
+			return { success: true, data: await rebuildQbittorrentIndex() }
+		} catch (error) {
+			throw upstreamError(error)
+		}
 	})
 	app.post('/api/watchlist/targets', async (event) => {
 		const body = await readBody<{

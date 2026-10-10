@@ -150,20 +150,45 @@ async function postTorrentAdd(form: FormData, cookieHeader?: string): Promise<Re
 	}
 }
 
+// GET a qBittorrent Web API endpoint ("/api/v2/..."), logging in once if the session is missing or expired.
+export async function getQbittorrentJson<T>(pathAndQuery: string, timeoutMs = 60_000): Promise<T> {
+	const request = async (cookie?: string) => {
+		const response = await fetch(`${qbittorrentRuntimeState.baseUrl}${pathAndQuery}`, {
+			headers: cookie ? { cookie } : undefined,
+			signal: AbortSignal.timeout(timeoutMs),
+		}).catch((error: unknown) => {
+			throw classifyNetworkError(error)
+		})
+		// qBittorrent opens a session even when the login is bypassed for localhost; keep it instead of
+		// opening a new one on every request.
+		const sessionCookie = sessionCookiePattern.exec(response.headers.get('set-cookie') ?? '')?.[0]
+		if (sessionCookie) {
+			cachedSidCookie = sessionCookie
+		}
+		return response
+	}
+	let response = await request(cachedSidCookie)
+	if (response.status === 401 || response.status === 403) {
+		cachedSidCookie = undefined
+		const sidCookie = await loadSidCookie()
+		if (!sidCookie) {
+			throw new QbittorrentRequestError('qBittorrent requires authentication.', 'auth', 'Provide qBittorrent Web UI credentials.')
+		}
+		response = await request(sidCookie)
+	}
+	if (!response.ok) {
+		throw new QbittorrentRequestError(`qBittorrent request failed: ${response.status} ${response.statusText}`, 'http', undefined, response.status)
+	}
+	return await response.json() as T
+}
+
 // qBittorrent answers torrents/add with 409 when it adds nothing, without saying why; look the torrent up by info hash.
-async function isTorrentInQbittorrent(torrentFilePath: string, cookieHeader?: string): Promise<boolean> {
+async function isTorrentInQbittorrent(torrentFilePath: string): Promise<boolean> {
 	const { infoHash } = await parseTorrent(await readFile(torrentFilePath)) as { infoHash?: string }
 	if (!infoHash) {
 		return false
 	}
-	const response = await fetch(`${qbittorrentRuntimeState.baseUrl}/api/v2/torrents/info?hashes=${infoHash}`, {
-		headers: cookieHeader ? { cookie: cookieHeader } : undefined,
-		signal: AbortSignal.timeout(7000),
-	}).catch(() => undefined)
-	if (!response?.ok) {
-		return false
-	}
-	const torrents: unknown = await response.json().catch(() => [])
+	const torrents = await getQbittorrentJson<unknown>(`/api/v2/torrents/info?hashes=${infoHash}`, 7000).catch(() => [])
 	return Array.isArray(torrents) && torrents.length > 0
 }
 
@@ -182,7 +207,7 @@ export async function addTorrentToQbittorrent(input: AddTorrentInput): Promise<Q
 		response = await postTorrentAdd(await buildAddTorrentForm(input), cookieHeader)
 	}
 
-	if (response.status === 409 && await isTorrentInQbittorrent(input.torrentFilePath, cookieHeader)) {
+	if (response.status === 409 && await isTorrentInQbittorrent(input.torrentFilePath)) {
 		return {
 			ok: true,
 			status: response.status,

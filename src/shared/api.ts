@@ -67,6 +67,41 @@ export interface WatchTargetFile {
 		status: DecisionStatus
 		item: TorrentItem
 	}
+	// Only for files the decision history doesn't know: the qBittorrent torrent whose content is this file.
+	qbittorrent?: QbittorrentTorrentSummary
+}
+
+export interface QbittorrentTorrentSummary {
+	hash: string
+	name: string
+	// false when qBittorrent didn't answer: only what the local index keeps (no state, progress, ratio or swarm).
+	live: boolean
+	state?: string
+	progress?: number
+	sizeBytes: number
+	addedOn?: number
+	completionOn?: number
+	ratio?: number
+	numComplete?: number
+	numIncomplete?: number
+	tags?: string
+	category?: string
+	// From the torrent comment ("https://nyaa.si/view/<id>") when it came from Nyaa.
+	nyaaTorrentId?: string
+}
+
+// The local copy of qBittorrent's torrent list (data/qbittorrent-index.jsonl.gz); rebuilt only on request.
+export interface QbittorrentIndexStatus {
+	torrents: number
+	fullSyncAt?: string
+	newTorrentsCheckedAt?: string
+}
+
+export interface WatchTargetFilesResponse {
+	files: WatchTargetFile[]
+	qbittorrentIndex: QbittorrentIndexStatus
+	// Set when qBittorrent couldn't be reached; files are still listed with what the history and the index know.
+	qbittorrentError?: string
 }
 
 export interface WatchTargetRow {

@@ -1,8 +1,9 @@
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
-import type { WatchTargetFile } from '@shared/api'
+import type { QbittorrentTorrentSummary, WatchTargetFile } from '@shared/api'
 import type { DecisionRecord, WatchTarget } from '@shared/types'
 import { getDecisionInternalNames } from './decisionWorkflowService'
+import type { IndexedTorrent } from './qbittorrentIndexService'
 import { buildFingerprintComboKey, extractReleaseFingerprint, listMatchingVideoFiles } from './localLibraryService'
 
 // Only video extensions: torrent titles have no extension but may contain dots ("Dr. Stone - 01").
@@ -36,6 +37,45 @@ export function buildLocalFileTorrentIndex(decisions: DecisionRecord[]): (fileNa
 function episodeOrder(file: WatchTargetFile): number {
 	const parsed = Number.parseInt(file.episode ?? '', 10)
 	return Number.isNaN(parsed) ? Number.POSITIVE_INFINITY : parsed
+}
+
+export interface QbittorrentLookup {
+	findByPath: (filePath: string) => IndexedTorrent | undefined
+	checkNewTorrents: () => Promise<unknown>
+	fetchLive: (hashes: string[]) => Promise<Map<string, QbittorrentTorrentSummary>>
+}
+
+// Fills in the qBittorrent torrent for files the decision history doesn't know: located through the local
+// index (checking qBittorrent for new torrents first when a file isn't in it), with live data when qBittorrent
+// answers and the index data alone when it doesn't. Returns the qBittorrent error, if any.
+export async function attachQbittorrentTorrents(files: WatchTargetFile[], folderPath: string, lookup: QbittorrentLookup): Promise<string | undefined> {
+	let error: string | undefined
+	const fail = (reason: unknown) => {
+		error ??= reason instanceof Error ? reason.message : String(reason)
+	}
+	const pending = files.filter((file) => !file.torrent)
+	const findTorrent = (file: WatchTargetFile) => lookup.findByPath(path.join(folderPath, file.name))
+	if (pending.some((file) => !findTorrent(file))) {
+		await lookup.checkNewTorrents().catch(fail)
+	}
+	const indexed = pending.flatMap((file) => {
+		const torrent = findTorrent(file)
+		return torrent ? [{ file, torrent }] : []
+	})
+	if (indexed.length === 0) {
+		return error
+	}
+	const live = await lookup.fetchLive([...new Set(indexed.map(({ torrent }) => torrent.hash))]).catch((reason: unknown) => {
+		fail(reason)
+		return undefined
+	})
+	for (const { file, torrent } of indexed) {
+		// With live data, a hash qBittorrent didn't return is a removed torrent: no qBittorrent info for the file.
+		file.qbittorrent = live
+			? live.get(torrent.hash)
+			: { hash: torrent.hash, name: torrent.name, live: false, sizeBytes: torrent.size, addedOn: torrent.addedOn, nyaaTorrentId: torrent.nyaaTorrentId }
+	}
+	return error
 }
 
 export async function listWatchTargetFiles(target: WatchTarget, decisions: DecisionRecord[], comboKey?: string): Promise<WatchTargetFile[]> {
