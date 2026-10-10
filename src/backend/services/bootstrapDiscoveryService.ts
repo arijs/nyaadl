@@ -475,7 +475,7 @@ async function processBootstrapItem(
 		await saveDecisions(decisionsState)
 		if (!stopOnPending) {
 			// Whole-page mode: queue this pending item and keep scanning the rest of the page.
-			return { inspectedCount: inspectedCount + 1 }
+			return { inspectedCount }
 		}
 		const result: BootstrapDiscoveryResult = {
 			startedAtUtc,
@@ -483,7 +483,7 @@ async function processBootstrapItem(
 			customQuery,
 			queryKey,
 			pagesScanned: 1,
-			inspectedCount: inspectedCount + 1,
+			inspectedCount,
 			found: false,
 			nyaaResultsText: nyaaResultsStats.text,
 			nyaaResultsLast: nyaaResultsStats.last,
@@ -507,7 +507,7 @@ async function processBootstrapItem(
 			torrentId: classified.torrentId,
 			title: classified.title,
 		}
-		return { inspectedCount: inspectedCount + 1, result }
+		return { inspectedCount, result }
 	}
 
 	if (classified.status === 'auto_downloaded') {
@@ -686,6 +686,7 @@ export async function discoverLastDownloadedCheckpointStep(
 		)
 		inspectedCount += itemCount
 		if (result) {
+			result.inspectedCount = inspectedCount
 			setBootstrapDiscoveryState(result)
 			await saveBootstrapDiscovery(result)
 			return result
