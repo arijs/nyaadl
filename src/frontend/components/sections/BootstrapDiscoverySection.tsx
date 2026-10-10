@@ -1,7 +1,7 @@
 import { createSignal, For, Show } from 'solid-js'
-import type { Accessor } from 'solid-js'
+import type { Accessor, JSX } from 'solid-js'
 import type { StatusResponse } from '../../../shared/api'
-import type { BootstrapDiscoveryResult, PendingItem } from '../../../shared/types'
+import type { BootstrapAutoDecisionSummary, BootstrapDiscoveryResult, DecisionStatus, PendingItem } from '../../../shared/types'
 import { isQbittorrentAddSuccess } from '../../../shared/qbittorrent'
 import type { useDashboardActions } from '../../hooks/useDashboardActions'
 import type { useBootstrapWorkflow } from '../../hooks/useBootstrapWorkflow'
@@ -15,17 +15,66 @@ interface BootstrapDiscoverySectionProps {
 	dashboardActions: ReturnType<typeof useDashboardActions>
 }
 
-export default function BootstrapDiscoverySection(props: BootstrapDiscoverySectionProps) {
-	const [showAllApproved, setShowAllApproved] = createSignal(false)
-	const [showAllRejected, setShowAllRejected] = createSignal(false)
-	const [showAllAlreadyDownloaded, setShowAllAlreadyDownloaded] = createSignal(false)
-	const [showAllBackfilled, setShowAllBackfilled] = createSignal(false)
-	const [autoApprovedCollapsed, setAutoApprovedCollapsed] = createSignal(false)
-	const [autoRejectedCollapsed, setAutoRejectedCollapsed] = createSignal(false)
-	const [alreadyDownloadedCollapsed, setAlreadyDownloadedCollapsed] = createSignal(false)
-	const [backfilledCollapsed, setBackfilledCollapsed] = createSignal(false)
+// Literal class strings so Tailwind picks them up.
+const tones = {
+	amber: { box: 'border-amber-400/20 bg-amber-400/10', title: 'text-amber-200', sub: 'text-amber-100/90', button: 'border-amber-300/30 bg-amber-300/10 text-amber-100' },
+	teal: { box: 'border-teal-400/20 bg-teal-400/10', title: 'text-teal-200', sub: 'text-teal-100/90', button: 'border-teal-300/30 bg-teal-300/10 text-teal-100' },
+	orange: { box: 'border-orange-400/20 bg-orange-400/10', title: 'text-orange-200', sub: 'text-orange-100/90', button: 'border-orange-300/30 bg-orange-300/10 text-orange-100' },
+	violet: { box: 'border-violet-400/20 bg-violet-400/10', title: 'text-violet-200', sub: 'text-violet-100/90', button: 'border-violet-300/30 bg-violet-300/10 text-violet-100' },
+	red: { box: 'border-red-500/30 bg-red-500/10', title: 'text-red-200', sub: 'text-red-100/90', button: 'border-red-300/30 bg-red-300/10 text-red-100' },
+	slate: { box: 'border-slate-400/20 bg-slate-400/10', title: 'text-slate-200', sub: 'text-slate-100/90', button: 'border-slate-300/30 bg-slate-300/10 text-slate-100' },
+	emerald: { box: 'border-emerald-400/20 bg-emerald-400/10', title: 'text-emerald-200', sub: 'text-emerald-100/90', button: 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100' },
+	rose: { box: 'border-rose-400/20 bg-rose-400/10', title: 'text-rose-200', sub: 'text-rose-100/90', button: 'border-rose-300/30 bg-rose-300/10 text-rose-100' },
+	sky: { box: 'border-sky-400/20 bg-sky-400/10', title: 'text-sky-200', sub: 'text-sky-100/90', button: 'border-sky-300/30 bg-sky-300/10 text-sky-100' },
+}
+
+const previewLimit = 5
+
+function SummaryBox(props: {
+	label: string
+	entries: BootstrapAutoDecisionSummary[]
+	tone: (typeof tones)[keyof typeof tones]
+	children: (entry: BootstrapAutoDecisionSummary) => JSX.Element
+}) {
+	const [showAll, setShowAll] = createSignal(false)
 	const [collapsed, setCollapsed] = createSignal(false)
-	const previewLimit = 5
+	const buttonClass = () => `rounded-full border px-2 py-0.5 text-[11px] ${props.tone.button}`
+	return (
+		<Show when={props.entries.length > 0}>
+			<div class={`rounded-xl border p-3 ${props.tone.box}`}>
+				<div class="flex items-center justify-between gap-2">
+					<div>
+						<p class={`text-xs uppercase tracking-[0.2em] ${props.tone.title}`}>{props.label}{collapsed() ? ` (${props.entries.length})` : ''}</p>
+						<Show when={!collapsed()}>
+							<p class={`text-[11px] ${props.tone.sub}`}>Showing {showAll() ? props.entries.length : Math.min(props.entries.length, previewLimit)} of {props.entries.length}</p>
+						</Show>
+					</div>
+					<div class="flex items-center gap-2">
+						<Show when={!collapsed() && props.entries.length > previewLimit}>
+							<button type="button" class={buttonClass()} onClick={() => setShowAll((current) => !current)}>{showAll() ? 'Show less' : 'Show all'}</button>
+						</Show>
+						<button type="button" class={buttonClass()} onClick={() => setCollapsed((current) => !current)}>{collapsed() ? 'Expand' : 'Collapse'}</button>
+					</div>
+				</div>
+				<Show when={!collapsed()}>
+					<For each={showAll() ? props.entries : props.entries.slice(0, previewLimit)}>{props.children}</For>
+				</Show>
+			</div>
+		</Show>
+	)
+}
+
+function ManualEntry(props: { entry: BootstrapAutoDecisionSummary; textClass: string }) {
+	return (
+		<div class={`mt-1 text-xs ${props.textClass}`}>
+			<p>p{props.entry.page} #{props.entry.itemIndex}: {props.entry.title} <NyaaMeta torrentId={props.entry.torrentId} category={props.entry.category} sizeText={props.entry.sizeText} /></p>
+			<Show when={props.entry.reason}><p class="mt-0.5 text-[11px] opacity-85">{props.entry.reason}</p></Show>
+		</div>
+	)
+}
+
+export default function BootstrapDiscoverySection(props: BootstrapDiscoverySectionProps) {
+	const [collapsed, setCollapsed] = createSignal(false)
 	const currentDiscoveryPage = () => props.bootstrap()?.currentPage ?? props.bootstrapWorkflow.bootstrapCursor()?.page ?? 1
 	// In whole-page mode the whole page was queued at once, so the review spotlight tracks the
 	// head of the live queue and advances as items get resolved. Single-item mode keeps using the
@@ -54,7 +103,20 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 		}
 		void props.bootstrapWorkflow.resolveBootstrapAction(action)
 	}
-	const shownCount = (total: number, expanded: boolean) => (expanded ? total : Math.min(total, previewLimit))
+	const manualEntries = (status: DecisionStatus) => props.bootstrap()?.manual?.filter((entry) => entry.status === status) ?? []
+	// An item can sit in two lists (a replayed approval that was also backfilled), so count page slots.
+	const listedCount = () => {
+		const bootstrap = props.bootstrap()
+		const entries = [
+			...(bootstrap?.manual ?? []),
+			...(bootstrap?.qbFailed ?? []),
+			...(bootstrap?.backfilled ?? []),
+			...(bootstrap?.autoApproved ?? []),
+			...(bootstrap?.autoRejected ?? []),
+			...(bootstrap?.alreadyDownloaded ?? []),
+		]
+		return new Set(entries.map((entry) => `${entry.page}:${entry.itemIndex}`)).size
+	}
 	// ponytail: full qB body only on failure, for debugging
 	const qbLabel = (text: string | undefined) => (isQbittorrentAddSuccess(text) ? 'Ok' : text)
 	const qbStatusCounts = () => {
@@ -63,7 +125,7 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 			...(props.bootstrap()?.backfilled ?? []),
 		]
 		let ok = 0
-		let fail = 0
+		let fail = props.bootstrap()?.qbFailed?.length ?? 0
 		for (const entry of entries) {
 			const value = entry.qbResponseText?.trim()
 			if (!value) {
@@ -197,126 +259,67 @@ export default function BootstrapDiscoverySection(props: BootstrapDiscoverySecti
 							<p>
 								Auto decisions: +{bootstrap().autoApproved?.length ?? 0} approved / +{bootstrap().autoRejected?.length ?? 0} rejected / +{bootstrap().alreadyDownloaded?.length ?? 0} already downloaded / +{bootstrap().backfilled?.length ?? 0} backfilled / +{qbStatusCounts().ok} qB Ok / +{qbStatusCounts().fail} qB Fail
 							</p>
-							<Show when={(bootstrap().backfilled?.length ?? 0) > 0}>
-								<div class="rounded-xl border border-slate-400/20 bg-slate-400/10 p-3">
-									<div class="flex items-center justify-between gap-2">
-										<div>
-											<p class="text-xs uppercase tracking-[0.2em] text-slate-200">Backfilled{backfilledCollapsed() ? ` (${bootstrap().backfilled?.length ?? 0})` : ''}</p>
-											<Show when={!backfilledCollapsed()}>
-												<p class="text-[11px] text-slate-100/90">Showing {shownCount(bootstrap().backfilled?.length ?? 0, showAllBackfilled())} of {bootstrap().backfilled?.length ?? 0}</p>
+							<p>
+								Manual decisions: {manualEntries('pending').length} pending / {manualEntries('approved').length} approved / {manualEntries('blocked').length} rejected / {manualEntries('skipped').length} skipped
+								<Show when={bootstrap().pageItemCount}>
+									{(pageItemCount) => <> · listed {listedCount()} of {pageItemCount()} page items</>}
+								</Show>
+							</p>
+							<SummaryBox label="Pending" entries={manualEntries('pending')} tone={tones.amber}>
+								{(entry) => <ManualEntry entry={entry} textClass="text-amber-100" />}
+							</SummaryBox>
+							<SummaryBox label="Manual approved" entries={manualEntries('approved')} tone={tones.teal}>
+								{(entry) => <ManualEntry entry={entry} textClass="text-teal-100" />}
+							</SummaryBox>
+							<SummaryBox label="Manual rejected" entries={manualEntries('blocked')} tone={tones.orange}>
+								{(entry) => <ManualEntry entry={entry} textClass="text-orange-100" />}
+							</SummaryBox>
+							<SummaryBox label="Manual skipped" entries={manualEntries('skipped')} tone={tones.violet}>
+								{(entry) => <ManualEntry entry={entry} textClass="text-violet-100" />}
+							</SummaryBox>
+							<SummaryBox label="qB failed" entries={bootstrap().qbFailed ?? []} tone={tones.red}>
+								{(entry) => <ManualEntry entry={entry} textClass="text-red-100" />}
+							</SummaryBox>
+							<SummaryBox label="Backfilled" entries={bootstrap().backfilled ?? []} tone={tones.slate}>
+								{(entry) => (
+									<div class="mt-1 rounded-lg border border-slate-300/15 bg-slate-900/20 px-2 py-1">
+										<p class="text-xs text-slate-100">
+											p{entry.page} #{entry.itemIndex}: {entry.title} <NyaaMeta torrentId={entry.torrentId} category={entry.category} sizeText={entry.sizeText} />
+											<Show when={entry.resubmittedFromNyaa}>
+												<span class="ml-2 font-bold text-emerald-300">Resubmitted from Nyaa</span>
 											</Show>
-										</div>
-										<div class="flex items-center gap-2">
-											<Show when={!backfilledCollapsed() && (bootstrap().backfilled?.length ?? 0) > previewLimit}>
-												<button type="button" class="rounded-full border border-slate-300/30 bg-slate-300/10 px-2 py-0.5 text-[11px] text-slate-100" onClick={() => setShowAllBackfilled((current) => !current)}>{showAllBackfilled() ? 'Show less' : 'Show all'}</button>
+											<Show when={entry.fileMissing}>
+												<span class="ml-2 font-bold text-rose-300">File missing</span>
 											</Show>
-											<button type="button" class="rounded-full border border-slate-300/30 bg-slate-300/10 px-2 py-0.5 text-[11px] text-slate-100" onClick={() => setBackfilledCollapsed((current) => !current)}>{backfilledCollapsed() ? 'Expand' : 'Collapse'}</button>
-										</div>
+											<Show when={entry.qbResponseText}> / qB: {qbLabel(entry.qbResponseText)}</Show>
+										</p>
+										<Show when={entry.reason}><p class="mt-0.5 text-[11px] text-slate-200/85">{entry.reason}</p></Show>
 									</div>
-									<Show when={!backfilledCollapsed()}>
-										<For each={showAllBackfilled() ? (bootstrap().backfilled ?? []) : (bootstrap().backfilled?.slice(0, previewLimit) ?? [])}>
-											{(entry) => (
-												<div class="mt-1 rounded-lg border border-slate-300/15 bg-slate-900/20 px-2 py-1">
-													<p class="text-xs text-slate-100">
-														p{entry.page} #{entry.itemIndex}: {entry.title} <NyaaMeta torrentId={entry.torrentId} category={entry.category} sizeText={entry.sizeText} />
-														<Show when={entry.resubmittedFromNyaa}>
-															<span class="ml-2 font-bold text-emerald-300">Resubmitted from Nyaa</span>
-														</Show>
-														<Show when={entry.fileMissing}>
-															<span class="ml-2 font-bold text-rose-300">File missing</span>
-														</Show>
-														<Show when={entry.qbResponseText}> / qB: {qbLabel(entry.qbResponseText)}</Show>
-													</p>
-													<Show when={entry.reason}><p class="mt-0.5 text-[11px] text-slate-200/85">{entry.reason}</p></Show>
-												</div>
-											)}
-										</For>
-									</Show>
-								</div>
-							</Show>
-							<Show when={(bootstrap().autoApproved?.length ?? 0) > 0}>
-								<div class="rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-3">
-									<div class="flex items-center justify-between gap-2">
-										<div>
-											<p class="text-xs uppercase tracking-[0.2em] text-emerald-200">Auto approved{autoApprovedCollapsed() ? ` (${bootstrap().autoApproved?.length ?? 0})` : ''}</p>
-											<Show when={!autoApprovedCollapsed()}>
-												<p class="text-[11px] text-emerald-100/90">Showing {shownCount(bootstrap().autoApproved?.length ?? 0, showAllApproved())} of {bootstrap().autoApproved?.length ?? 0}</p>
-											</Show>
-										</div>
-										<div class="flex items-center gap-2">
-											<Show when={!autoApprovedCollapsed() && (bootstrap().autoApproved?.length ?? 0) > previewLimit}>
-												<button type="button" class="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-2 py-0.5 text-[11px] text-emerald-100" onClick={() => setShowAllApproved((current) => !current)}>{showAllApproved() ? 'Show less' : 'Show all'}</button>
-											</Show>
-											<button type="button" class="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-2 py-0.5 text-[11px] text-emerald-100" onClick={() => setAutoApprovedCollapsed((current) => !current)}>{autoApprovedCollapsed() ? 'Expand' : 'Collapse'}</button>
-										</div>
+								)}
+							</SummaryBox>
+							<SummaryBox label="Auto approved" entries={bootstrap().autoApproved ?? []} tone={tones.emerald}>
+								{(entry) => (
+									<div class="mt-1 rounded-lg border border-emerald-300/20 bg-emerald-900/20 px-2 py-1">
+										<p class="text-xs text-emerald-100">p{entry.page} #{entry.itemIndex}: {entry.title} <NyaaMeta torrentId={entry.torrentId} category={entry.category} sizeText={entry.sizeText} /><Show when={entry.qbResponseText}> / qB: {qbLabel(entry.qbResponseText)}</Show></p>
 									</div>
-									<Show when={!autoApprovedCollapsed()}>
-										<For each={showAllApproved() ? (bootstrap().autoApproved ?? []) : (bootstrap().autoApproved?.slice(0, previewLimit) ?? [])}>
-											{(entry) => (
-												<div class="mt-1 rounded-lg border border-emerald-300/20 bg-emerald-900/20 px-2 py-1">
-													<p class="text-xs text-emerald-100">p{entry.page} #{entry.itemIndex}: {entry.title} <NyaaMeta torrentId={entry.torrentId} category={entry.category} sizeText={entry.sizeText} /><Show when={entry.qbResponseText}> / qB: {qbLabel(entry.qbResponseText)}</Show></p>
-												</div>
-											)}
-										</For>
-									</Show>
-								</div>
-							</Show>
-							<Show when={(bootstrap().autoRejected?.length ?? 0) > 0}>
-								<div class="rounded-xl border border-rose-400/20 bg-rose-400/10 p-3">
-									<div class="flex items-center justify-between gap-2">
-										<div>
-											<p class="text-xs uppercase tracking-[0.2em] text-rose-200">Auto rejected{autoRejectedCollapsed() ? ` (${bootstrap().autoRejected?.length ?? 0})` : ''}</p>
-											<Show when={!autoRejectedCollapsed()}>
-												<p class="text-[11px] text-rose-100/90">Showing {shownCount(bootstrap().autoRejected?.length ?? 0, showAllRejected())} of {bootstrap().autoRejected?.length ?? 0}</p>
-											</Show>
-										</div>
-										<div class="flex items-center gap-2">
-											<Show when={!autoRejectedCollapsed() && (bootstrap().autoRejected?.length ?? 0) > previewLimit}>
-												<button type="button" class="rounded-full border border-rose-300/30 bg-rose-300/10 px-2 py-0.5 text-[11px] text-rose-100" onClick={() => setShowAllRejected((current) => !current)}>{showAllRejected() ? 'Show less' : 'Show all'}</button>
-											</Show>
-											<button type="button" class="rounded-full border border-rose-300/30 bg-rose-300/10 px-2 py-0.5 text-[11px] text-rose-100" onClick={() => setAutoRejectedCollapsed((current) => !current)}>{autoRejectedCollapsed() ? 'Expand' : 'Collapse'}</button>
-										</div>
-									</div>
-									<Show when={!autoRejectedCollapsed()}>
-										<For each={showAllRejected() ? (bootstrap().autoRejected ?? []) : (bootstrap().autoRejected?.slice(0, previewLimit) ?? [])}>
-											{(entry) => <p class="mt-1 text-xs text-rose-100">p{entry.page} #{entry.itemIndex}: {entry.title} <NyaaMeta torrentId={entry.torrentId} category={entry.category} sizeText={entry.sizeText} /></p>}
-										</For>
-									</Show>
-								</div>
-							</Show>
-							<Show when={(bootstrap().alreadyDownloaded?.length ?? 0) > 0}>
-								<div class="rounded-xl border border-sky-400/20 bg-sky-400/10 p-3">
-									<div class="flex items-center justify-between gap-2">
-										<div>
-											<p class="text-xs uppercase tracking-[0.2em] text-sky-200">Already downloaded{alreadyDownloadedCollapsed() ? ` (${bootstrap().alreadyDownloaded?.length ?? 0})` : ''}</p>
-											<Show when={!alreadyDownloadedCollapsed()}>
-												<p class="text-[11px] text-sky-100/90">Showing {shownCount(bootstrap().alreadyDownloaded?.length ?? 0, showAllAlreadyDownloaded())} of {bootstrap().alreadyDownloaded?.length ?? 0}</p>
-											</Show>
-										</div>
-										<div class="flex items-center gap-2">
-											<Show when={!alreadyDownloadedCollapsed() && (bootstrap().alreadyDownloaded?.length ?? 0) > previewLimit}>
-												<button type="button" class="rounded-full border border-sky-300/30 bg-sky-300/10 px-2 py-0.5 text-[11px] text-sky-100" onClick={() => setShowAllAlreadyDownloaded((current) => !current)}>{showAllAlreadyDownloaded() ? 'Show less' : 'Show all'}</button>
-											</Show>
-											<button type="button" class="rounded-full border border-sky-300/30 bg-sky-300/10 px-2 py-0.5 text-[11px] text-sky-100" onClick={() => setAlreadyDownloadedCollapsed((current) => !current)}>{alreadyDownloadedCollapsed() ? 'Expand' : 'Collapse'}</button>
-										</div>
-									</div>
-									<Show when={!alreadyDownloadedCollapsed()}>
-										<For each={showAllAlreadyDownloaded() ? (bootstrap().alreadyDownloaded ?? []) : (bootstrap().alreadyDownloaded?.slice(0, previewLimit) ?? [])}>
-											{(entry) => (
-												<p class="mt-1 text-xs text-sky-100">
-													p{entry.page} #{entry.itemIndex}: {entry.title} <NyaaMeta torrentId={entry.torrentId} category={entry.category} sizeText={entry.sizeText} />
-													<Show when={entry.newlyFound}>
-														<span class="ml-2 font-bold text-emerald-300">Newly found</span>
-													</Show>
-													<Show when={entry.fileMissing}>
-														<span class="ml-2 font-bold text-rose-300">File missing</span>
-													</Show>
-												</p>
-											)}
-										</For>
-									</Show>
-								</div>
-							</Show>
+								)}
+							</SummaryBox>
+							<SummaryBox label="Auto rejected" entries={bootstrap().autoRejected ?? []} tone={tones.rose}>
+								{(entry) => <p class="mt-1 text-xs text-rose-100">p{entry.page} #{entry.itemIndex}: {entry.title} <NyaaMeta torrentId={entry.torrentId} category={entry.category} sizeText={entry.sizeText} /></p>}
+							</SummaryBox>
+							<SummaryBox label="Already downloaded" entries={bootstrap().alreadyDownloaded ?? []} tone={tones.sky}>
+								{(entry) => (
+									<p class="mt-1 text-xs text-sky-100">
+										p{entry.page} #{entry.itemIndex}: {entry.title} <NyaaMeta torrentId={entry.torrentId} category={entry.category} sizeText={entry.sizeText} />
+										<Show when={entry.newlyFound}>
+											<span class="ml-2 font-bold text-emerald-300">Newly found</span>
+										</Show>
+										<Show when={entry.fileMissing}>
+											<span class="ml-2 font-bold text-rose-300">File missing</span>
+										</Show>
+									</p>
+								)}
+							</SummaryBox>
 						</div>
 					)}
 				</Show>

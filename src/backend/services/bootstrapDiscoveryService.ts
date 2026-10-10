@@ -3,6 +3,7 @@ import type {
 	BootstrapAutoDecisionSummary,
 	BootstrapDiscoveryResult,
 	DecisionRecord,
+	DecisionStatus,
 	PendingItem,
 	TorrentItem,
 } from '@shared/types'
@@ -25,6 +26,7 @@ import { buildNyaaQueryKey, normalizeNyaaQuery } from './nyaaQueryService'
 import { inspectAndClassifyTorrent, savePageSnapshot } from './nyaaTorrentService'
 import {
 	blacklistState,
+	bootstrapDiscoveryState,
 	decisionsState,
 	lastProcessedState,
 	pendingState,
@@ -123,6 +125,7 @@ async function processReplayedDecision(
 	autoRejected: BootstrapAutoDecisionSummary[],
 	alreadyDownloaded: BootstrapAutoDecisionSummary[],
 	backfilled: BootstrapAutoDecisionSummary[],
+	manual: BootstrapAutoDecisionSummary[],
 ): Promise<{ inspectedCount: number; result?: BootstrapDiscoveryResult }> {
 	const replayLocalMatch = await findReplayLocalMatch(latestDecision, aliases)
 	if (replayLocalMatch) {
@@ -280,11 +283,32 @@ async function processReplayedDecision(
 		return { inspectedCount: 1 }
 	}
 	if (latestDecision.status === 'pending') {
-		autoRejected.push(buildBootstrapSummary(latestDecision.item, latestDecision.status, `${latestDecision.reason} (already pending from history)`, itemIndex))
+		manual.push(buildBootstrapSummary(latestDecision.item, latestDecision.status, `${latestDecision.reason} (already pending from history)`, itemIndex))
 		return { inspectedCount: 1 }
 	}
 
 	return { inspectedCount: 1 }
+}
+
+// An item seen before that has no decision yet: still in the pending queue, or its qBittorrent
+// submit failed before a decision was saved. Lists it so every page slot shows up in the result.
+export function listUndecidedItem(
+	torrentId: string,
+	itemIndex: number,
+	manual: BootstrapAutoDecisionSummary[],
+	qbFailed: BootstrapAutoDecisionSummary[],
+): boolean {
+	const pendingItem = pendingState.find((entry) => entry.torrentId === torrentId)
+	if (pendingItem) {
+		manual.push(buildBootstrapSummary(pendingItem.item, pendingItem.status, `${pendingItem.reason} (already pending from queue)`, itemIndex))
+		return true
+	}
+	const failure = qbittorrentFailuresState.find((entry) => entry.torrentId === torrentId)
+	if (failure) {
+		qbFailed.push(buildBootstrapSummary(failure.item, failure.decisionStatus, `${failure.decisionReason}; qBittorrent submit failed: ${failure.errorMessage}`, itemIndex))
+		return true
+	}
+	return false
 }
 
 async function processBootstrapItem(
@@ -306,6 +330,8 @@ async function processBootstrapItem(
 	autoRejected: BootstrapAutoDecisionSummary[],
 	alreadyDownloaded: BootstrapAutoDecisionSummary[],
 	backfilled: BootstrapAutoDecisionSummary[],
+	manual: BootstrapAutoDecisionSummary[],
+	qbFailed: BootstrapAutoDecisionSummary[],
 	stopOnPending: boolean,
 ): Promise<{ inspectedCount: number; result?: BootstrapDiscoveryResult }> {
 	let inspectedCount = 0
@@ -336,18 +362,12 @@ async function processBootstrapItem(
 				autoRejected,
 				alreadyDownloaded,
 				backfilled,
+				manual,
 			)
 		}
 
 		if (!latestDecision) {
-			if (pendingTorrentIds.has(item.torrentId)) {
-				const pendingItem = pendingState.find((entry) => entry.torrentId === item.torrentId)
-				if (pendingItem) {
-					autoRejected.push(buildBootstrapSummary(pendingItem.item, pendingItem.status, `${pendingItem.reason} (already pending from queue)`, itemIndex))
-					return { inspectedCount: 1 }
-				}
-			}
-			return { inspectedCount: 0 }
+			return { inspectedCount: listUndecidedItem(item.torrentId, itemIndex, manual, qbFailed) ? 1 : 0 }
 		}
 		// else: latestDecision is a no-longer-blacklisted rejection -> fall through
 	}
@@ -450,6 +470,7 @@ async function processBootstrapItem(
 		}
 		pendingState.push(pendingItem)
 		pendingTorrentIds.add(item.torrentId)
+		manual.push(buildBootstrapSummary(classified, 'pending', classified.reason, itemIndex))
 		await savePending(pendingState)
 		await saveDecisions(decisionsState)
 		if (!stopOnPending) {
@@ -479,6 +500,9 @@ async function processBootstrapItem(
 			autoRejected,
 			alreadyDownloaded,
 			backfilled,
+			manual,
+			qbFailed,
+			pageItemCount,
 			reason: classified.reason,
 			torrentId: classified.torrentId,
 			title: classified.title,
@@ -546,6 +570,8 @@ export async function discoverLastDownloadedCheckpointStep(
 	const autoRejected: BootstrapAutoDecisionSummary[] = []
 	const alreadyDownloaded: BootstrapAutoDecisionSummary[] = []
 	const backfilled: BootstrapAutoDecisionSummary[] = []
+	const manual: BootstrapAutoDecisionSummary[] = []
+	const qbFailed: BootstrapAutoDecisionSummary[] = []
 
 	await refreshWatchRoots()
 	await refreshWatchTargets()
@@ -579,6 +605,8 @@ export async function discoverLastDownloadedCheckpointStep(
 			autoRejected,
 			alreadyDownloaded,
 			backfilled,
+			manual,
+			qbFailed,
 			reason,
 			watchTargetsIssue,
 		}
@@ -621,6 +649,9 @@ export async function discoverLastDownloadedCheckpointStep(
 			autoRejected,
 			alreadyDownloaded,
 			backfilled,
+			manual,
+			qbFailed,
+			pageItemCount: items.length,
 			reason: `Page ${page} already exhausted`,
 		}
 		setBootstrapDiscoveryState(result)
@@ -649,6 +680,8 @@ export async function discoverLastDownloadedCheckpointStep(
 			autoRejected,
 			alreadyDownloaded,
 			backfilled,
+			manual,
+			qbFailed,
 			stopOnPending,
 		)
 		inspectedCount += itemCount
@@ -682,6 +715,9 @@ export async function discoverLastDownloadedCheckpointStep(
 		autoRejected,
 		alreadyDownloaded,
 		backfilled,
+		manual,
+		qbFailed,
+		pageItemCount: items.length,
 		reason: `Page ${page} completed without manual stop`,
 	}
 
@@ -693,4 +729,21 @@ export async function discoverLastDownloadedCheckpointStep(
 	setBootstrapDiscoveryState(result)
 	await saveBootstrapDiscovery(result)
 	return result
+}
+
+// Moves items listed as pending in the last scrape to the status the user resolved them with,
+// so the Scraping box keeps listing every item of the page. Returns whether anything changed.
+export function applyManualDecision(result: BootstrapDiscoveryResult | undefined, torrentIds: string[], status: DecisionStatus): boolean {
+	const ids = new Set(torrentIds)
+	const entries = result?.manual?.filter((entry) => ids.has(entry.torrentId)) ?? []
+	for (const entry of entries) {
+		entry.status = status
+	}
+	return entries.length > 0
+}
+
+export async function recordManualDecision(torrentIds: string[], status: DecisionStatus): Promise<void> {
+	if (applyManualDecision(bootstrapDiscoveryState, torrentIds, status)) {
+		await saveBootstrapDiscovery(bootstrapDiscoveryState!)
+	}
 }

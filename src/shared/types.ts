@@ -169,6 +169,12 @@ export interface BootstrapDiscoveryResult {
 	autoRejected?: BootstrapAutoDecisionSummary[]
 	alreadyDownloaded?: BootstrapAutoDecisionSummary[]
 	backfilled?: BootstrapAutoDecisionSummary[]
+	// Items that needed review: status starts as 'pending' and is updated in place when the user approves/blacklists/skips them.
+	manual?: BootstrapAutoDecisionSummary[]
+	// Items whose qBittorrent submit failed before a decision was saved (retry them from the qBittorrent failures list).
+	qbFailed?: BootstrapAutoDecisionSummary[]
+	// Number of torrents on the scraped Nyaa page, to show how many of them are listed.
+	pageItemCount?: number
 	actionItem?: PendingItem
 	torrentId?: string
 	title?: string

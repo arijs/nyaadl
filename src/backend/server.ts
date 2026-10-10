@@ -3,7 +3,7 @@ import { H3, getQuery, readBody } from 'h3'
 import { toNodeHandler } from 'h3/node'
 import { mkdir, readFile } from 'node:fs/promises'
 import { advanceCheckpoint, determineScrapePages } from './services/checkpointService'
-import { discoverLastDownloadedCheckpointStep } from './services/bootstrapDiscoveryService'
+import { discoverLastDownloadedCheckpointStep, recordManualDecision } from './services/bootstrapDiscoveryService'
 import { badRequest, notFound, upstreamError } from './services/apiErrorService'
 import { addWatchRoot, loadAliases, removeWatchRoot, validateWatchRootPath } from './services/watchlistService'
 import { downloadTorrentFile, findDownloadedTorrentFileById } from './services/downloaderService'
@@ -718,6 +718,7 @@ async function main(): Promise<void> {
 		}
 		const body = await readBody<ApproveBody>(event).catch(() => ({})) as ApproveBody
 		const decision = await approvePendingItemByIndex(pendingIndex, body)
+		await recordManualDecision([torrentId], decision.status)
 		return { success: true, data: decision }
 	})
 
@@ -726,6 +727,7 @@ async function main(): Promise<void> {
 		decisionsState.push(...skipped)
 		await savePending(pendingState)
 		await saveDecisions(decisionsState)
+		await recordManualDecision(skipped.map((decision) => decision.torrentId), 'skipped')
 		return { success: true, data: { skipped, count: skipped.length, status: buildStatus() } }
 	})
 
@@ -756,6 +758,7 @@ async function main(): Promise<void> {
 		await saveBlacklist(blacklistState)
 		await savePending(pendingState)
 		await saveDecisions(decisionsState)
+		await recordManualDecision([torrentId], 'blocked')
 		return { success: true, data: decision }
 	})
 
@@ -778,6 +781,7 @@ async function main(): Promise<void> {
 			decisionsState.push(decision)
 			await savePending(pendingState)
 			await saveDecisions(decisionsState)
+			await recordManualDecision([torrentId], 'skipped')
 			return { success: true, data: decision }
 		}
 		return { success: true, data: null }
