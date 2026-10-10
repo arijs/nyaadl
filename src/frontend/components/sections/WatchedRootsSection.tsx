@@ -124,6 +124,10 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 						</div>
 					</Show>
 				</div>
+			</div>
+			</Show>
+			{/* Watch targets stay outside the roots' collapse: they expand on their own. */}
+			<div class="mt-5 space-y-4">
 				<div class="border-t border-white/10 pt-4">
 					<div class="flex items-center justify-between gap-3">
 						<h3 class="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
@@ -294,7 +298,6 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 				</Show>
 				</Show>
 			</div>
-			</Show>
 		</section>
 	)
 }
