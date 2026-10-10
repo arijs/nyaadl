@@ -60,7 +60,7 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 						type="text"
 						value={props.watchRoots.newRootPath()}
 						onInput={(event) => props.watchRoots.setNewRootPath(event.currentTarget.value)}
-						placeholder="Q:\\2026.2 PRIMAVERA"
+						placeholder={"Q:\\2026.2 PRIMAVERA"}
 						class="flex-1 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-amber-300/40"
 					/>
 					<ActionButton label="Add folder" onClick={props.watchRoots.addWatchRoot} />

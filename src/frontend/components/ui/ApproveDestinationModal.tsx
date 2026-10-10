@@ -91,7 +91,7 @@ export default function ApproveDestinationModal(props: ApproveDestinationModalPr
 									type="text"
 									value={customRootInput()}
 									onInput={(e) => setCustomRootInput(e.currentTarget.value)}
-									placeholder="e.g. Q:\2026.2 PRIMAVERA"
+									placeholder={"e.g. Q:\\2026.2 PRIMAVERA"}
 									class="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-sky-500/50 focus:outline-none"
 								/>
 							)}
