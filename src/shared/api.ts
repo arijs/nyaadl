@@ -104,6 +104,33 @@ export interface WatchTargetFilesResponse {
 	qbittorrentError?: string
 }
 
+// Details downloader: walks the watch targets and saves Nyaa (first file), Erai, MAL and AniDB data.
+export type DetailsCrawlerSource = 'nyaa' | 'erai' | 'mal' | 'anidb'
+export type DetailsCrawlerStepResult = 'cached' | 'fetched' | 'no-link' | 'no-torrent' | 'skipped' | 'error'
+
+export interface DetailsCrawlerEntry {
+	folderName: string
+	rootName: string
+	torrentId?: string
+	slug?: string
+	steps: Record<DetailsCrawlerSource, DetailsCrawlerStepResult>
+	error?: string
+	atUtc: string
+}
+
+export interface DetailsCrawlerStatus {
+	state: 'idle' | 'running' | 'stopping' | 'stopped' | 'finished'
+	startedAtUtc?: string
+	finishedAtUtc?: string
+	stopReason?: string
+	total: number
+	position: number
+	current?: { folderName: string; rootName: string }
+	counts: Record<DetailsCrawlerSource, Record<DetailsCrawlerStepResult, number>>
+	// Newest first, capped.
+	recent: DetailsCrawlerEntry[]
+}
+
 export interface WatchTargetRow {
 	target: WatchTarget
 	rootPath?: string

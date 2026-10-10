@@ -6,7 +6,7 @@ function normalizeQuery(value: string | undefined): string {
 	return value?.trim().toLowerCase() ?? ''
 }
 
-function getRootMatch(folderPath: string, roots: string[]): string | undefined {
+export function getRootMatch(folderPath: string, roots: string[]): string | undefined {
 	return roots
 		.filter((rootPath) => folderPath.toLowerCase().startsWith(rootPath.toLowerCase()))
 		.sort((left, right) => right.length - left.length)[0]

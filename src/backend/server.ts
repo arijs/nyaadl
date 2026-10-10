@@ -27,6 +27,7 @@ import { buildTorrentHistoryPage } from './services/torrentHistoryService'
 import { buildBlacklistPage, parseBlacklistEntry } from './services/blacklistService'
 import { buildWatchTargetPage } from './services/watchTargetService'
 import { attachQbittorrentTorrents, listWatchTargetFiles } from './services/watchTargetFilesService'
+import { getDetailsCrawlerStatus, startDetailsCrawler, stopDetailsCrawler } from './services/detailsCrawlerService'
 import {
 	checkNewQbittorrentTorrents,
 	fetchLiveQbittorrentTorrents,
@@ -565,6 +566,10 @@ async function main(): Promise<void> {
 		const data: WatchTargetFilesResponse = { files, qbittorrentIndex: getIndexStatus(getQbittorrentIndex()), qbittorrentError }
 		return { success: true, data }
 	})
+	// Details downloader: started and stopped by hand; the report is polled while it runs.
+	app.get('/api/details-crawler', () => ({ success: true, data: getDetailsCrawlerStatus() }))
+	app.post('/api/details-crawler/start', async () => ({ success: true, data: await startDetailsCrawler() }))
+	app.post('/api/details-crawler/stop', () => ({ success: true, data: stopDetailsCrawler() }))
 	// Manual only: downloads qBittorrent's whole torrent list and replaces the local index.
 	app.post('/api/qbittorrent/index/rebuild', async () => {
 		try {

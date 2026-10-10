@@ -6,6 +6,7 @@ import type { useWatchTargets } from '../../hooks/useWatchTargets'
 import ActionButton from '../ui/ActionButton'
 import EmptyState from '../ui/EmptyState'
 import WatchTargetFileList from '../ui/WatchTargetFileList'
+import DetailsCrawlerPanel from '../ui/DetailsCrawlerPanel'
 
 interface WatchedRootsSectionProps {
 	status: Accessor<StatusResponse | undefined>
@@ -297,6 +298,9 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 					</div>
 				</Show>
 				</Show>
+			</div>
+			<div class="mt-5">
+				<DetailsCrawlerPanel />
 			</div>
 		</section>
 	)
