@@ -1,12 +1,13 @@
 import path from 'node:path'
 import type { DetailsCrawlerEntry, DetailsCrawlerSource, DetailsCrawlerStatus, DetailsCrawlerStepResult, WatchTargetFile } from '@shared/api'
-import type { EraiRawsSeries, WatchTarget } from '@shared/types'
+import type { DecisionRecord, DecisionStatus, EraiRawsSeries, QbittorrentAddApiResponseItem, WatchTarget } from '@shared/types'
 import { getAnidbClientStatus, getAnidbDetails, anidbAnimeId } from './anidbService'
 import { EraiRawsAuthError, eraiSeriesSlug, getEraiSeries } from './eraiRawsService'
 import { getMalDetails, malAnimeId } from './malService'
 import { findNyaaDetailFile, getNyaaDetail } from './nyaaDetailService'
 import { extractReleaseFingerprint } from './localLibraryService'
-import { findIndexedTorrentByPath, getQbittorrentIndex, normalizeQbittorrentPath } from './qbittorrentIndexService'
+import { buildNormalizedKey, deriveSeriesBase } from './normalizeService'
+import { findIndexedTorrentByPath, getQbittorrentIndex, normalizeQbittorrentPath, type IndexedTorrent } from './qbittorrentIndexService'
 import { decisionsState, qbittorrentAddResponsesState, watchRootsState, watchTargetsState } from './runtimeStateService'
 import { listSavedSeriesSources, readSeriesJson } from '../storage/seriesStore'
 import { listWatchTargetFiles } from './watchTargetFilesService'
@@ -54,11 +55,35 @@ export function pickFolderTorrentId(torrents: FolderTorrent[]): string | undefin
 	return [...torrents].sort((left, right) => order(left) - order(right) || left.name.localeCompare(right.name))[0]?.torrentId
 }
 
+const downloadedStatuses = new Set<DecisionStatus>(['auto_downloaded', 'approved', 'already_downloaded'])
+
+// Torrents of a target from what nyaadl and qBittorrent know, for when no local file leads to one.
+// ponytail: linear scans of the add history, the qBittorrent index and the decisions; only runs for targets with no usable file.
+export function findTargetTorrents(
+	target: WatchTarget,
+	sources: { sent: QbittorrentAddApiResponseItem[]; indexed: Iterable<IndexedTorrent>; decisions: DecisionRecord[] },
+): FolderTorrent[] {
+	const folder = normalizeQbittorrentPath(target.folderPath)
+	const sent = sources.sent
+		.filter((response) => response.ok && normalizeQbittorrentPath(response.targetFolderPath) === folder)
+		.map((response) => ({ torrentId: response.torrentId, name: response.torrentFilename }))
+	// A file inside the folder, or a batch whose content is the folder itself.
+	const indexed = [...sources.indexed]
+		.filter((torrent) => torrent.nyaaTorrentId && [torrent.contentPath, path.dirname(torrent.contentPath)].some((candidate) => normalizeQbittorrentPath(candidate) === folder))
+		.map((torrent) => ({ torrentId: torrent.nyaaTorrentId!, name: torrent.name }))
+	// Downloaded or approved torrents of the same series+resolution, even if qBittorrent no longer has them.
+	const decided = sources.decisions
+		.filter((decision) => downloadedStatuses.has(decision.status) && buildNormalizedKey(deriveSeriesBase(decision.item.seriesBaseRaw), decision.item.resolution) === target.normalizedKey)
+		.map((decision) => ({ torrentId: decision.torrentId, name: decision.item.title }))
+	return [...sent, ...indexed, ...decided]
+}
+
 export interface CrawlDeps {
 	listFiles: (target: WatchTarget) => Promise<WatchTargetFile[]>
 	findIndexedNyaaId: (filePath: string) => string | undefined
-	// Torrents sent to the folder whose files aren't on disk yet (nyaadl adds torrents to qBittorrent stopped).
-	findFolderTorrents: (folderPath: string) => FolderTorrent[]
+	// Torrents of the target when no local file leads to one: files not on disk yet (nyaadl adds torrents to
+	// qBittorrent stopped), a batch torrent whose content is the folder itself, or a torrent gone from qBittorrent.
+	findFolderTorrents: (target: WatchTarget) => FolderTorrent[]
 	processedAtUtc: (torrentId: string) => string | undefined
 	hasNyaaDetail: (torrentId: string) => Promise<boolean>
 	getNyaaDetail: (torrentId: string, processedAtUtc: string | undefined) => Promise<{ information?: string }>
@@ -99,7 +124,7 @@ export async function crawlTarget(target: WatchTarget, deps: CrawlDeps, options:
 			break
 		}
 	}
-	result.torrentId ??= pickFolderTorrentId(deps.findFolderTorrents(target.folderPath))
+	result.torrentId ??= pickFolderTorrentId(deps.findFolderTorrents(target))
 	if (!result.torrentId) {
 		return result
 	}
@@ -239,17 +264,7 @@ let status = createCrawlerStatus()
 const appCrawlDeps: CrawlDeps = {
 	listFiles: (target) => listWatchTargetFiles(target, decisionsState),
 	findIndexedNyaaId: (filePath) => findIndexedTorrentByPath(getQbittorrentIndex(), filePath)?.nyaaTorrentId,
-	findFolderTorrents: (folderPath) => {
-		const folder = normalizeQbittorrentPath(folderPath)
-		// ponytail: linear scans of the add history and the qBittorrent index; only runs for targets with no usable file.
-		const sent = qbittorrentAddResponsesState
-			.filter((response) => response.ok && normalizeQbittorrentPath(response.targetFolderPath) === folder)
-			.map((response) => ({ torrentId: response.torrentId, name: response.torrentFilename }))
-		const indexed = [...getQbittorrentIndex().torrents.values()]
-			.filter((torrent) => torrent.nyaaTorrentId && normalizeQbittorrentPath(path.dirname(torrent.contentPath)) === folder)
-			.map((torrent) => ({ torrentId: torrent.nyaaTorrentId!, name: torrent.name }))
-		return [...sent, ...indexed]
-	},
+	findFolderTorrents: (target) => findTargetTorrents(target, { sent: qbittorrentAddResponsesState, indexed: getQbittorrentIndex().torrents.values(), decisions: decisionsState }),
 	processedAtUtc: (torrentId) => decisionsState.find((decision) => decision.torrentId === torrentId)?.createdAtUtc,
 	hasNyaaDetail: async (torrentId) => Boolean(await findNyaaDetailFile(torrentId)),
 	getNyaaDetail: (torrentId, processedAtUtc) => getNyaaDetail(torrentId, { processedAtUtc }),

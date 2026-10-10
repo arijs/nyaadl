@@ -1,11 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { WatchTargetFile } from '@shared/api'
-import type { WatchTarget } from '@shared/types'
+import type { DecisionRecord, QbittorrentAddApiResponseItem, TorrentItem, WatchTarget } from '@shared/types'
 import {
 	crawlIntervalMs,
 	crawlTarget,
 	createCrawlerStatus,
+	findTargetTorrents,
 	orderCrawlTargets,
 	pickFolderTorrentId,
 	runCrawlLoop,
@@ -114,13 +115,38 @@ test('pickFolderTorrentId picks the lowest episode', () => {
 test('crawlTarget falls back to the torrents sent to the folder when it has no file yet', async () => {
 	const deps = fakeDeps({
 		listFiles: async () => [],
-		findFolderTorrents: (folderPath) => (folderPath.endsWith('Romelia Senki [480p]')
+		findFolderTorrents: (t) => (t.folderPath.endsWith('Romelia Senki [480p]')
 			? [{ torrentId: '2172038', name: '[Erai-raws] Romelia Senki - 02 [480p CR WEB-DL AVC AAC][MultiSub].mkv' }, { torrentId: '2169093', name: '[Erai-raws] Romelia Senki - 01 [480p CR WEB-DL AVC AAC][MultiSub].mkv' }]
 			: []),
 	})
 	const result = await crawlTarget(target('Q:\\2026.4 Outono', '[Erai-raws] Romelia Senki [480p]'), deps, { anidbEnabled: true })
 	assert.equal(result.torrentId, '2169093')
 	assert.equal(result.steps.nyaa, 'cached')
+})
+
+function decision(torrentId: string, title: string, status: DecisionRecord['status'], seriesBaseRaw: string, resolution: string): DecisionRecord {
+	return { torrentId, status, reason: '', createdAtUtc: '', item: { torrentId, title, seriesBaseRaw, resolution, matchCandidates: [seriesBaseRaw] } as TorrentItem }
+}
+
+test('findTargetTorrents finds torrents sent to the folder, batches whose content is the folder, and decided torrents of the series', () => {
+	const dandelion = { ...target('Q:\\2026.2 Primavera', '[Erai-raws] Dandelion [720p]'), normalizedKey: 'dandelion::720p' }
+	const grandBlue = { ...target('Q:\\2026.3 Verão', '[Erai-raws] Grand Blue Season 3 [1080p]'), normalizedKey: 'grand blue season 3::1080p' }
+	const sources = {
+		sent: [
+			{ torrentId: '2169093', ok: true, targetFolderPath: 'Q:\\2026.2 Primavera\\[Erai-raws] Dandelion [720p]', torrentFilename: 'Dandelion - 08.mkv' },
+			{ torrentId: '1', ok: false, targetFolderPath: 'Q:\\2026.2 Primavera\\[Erai-raws] Dandelion [720p]', torrentFilename: 'failed.mkv' },
+		] as QbittorrentAddApiResponseItem[],
+		// Regression: "Dandelion [720p]" came as a batch, so its torrent's content_path is the folder itself.
+		indexed: [{ hash: 'h', contentPath: 'Q:\\2026.2 Primavera\\[Erai-raws] Dandelion [720p]', name: '[Erai-raws] Dandelion [720p]', nyaaTorrentId: '2098812', addedOn: 0, size: 0 }],
+		// Regression: "Grand Blue Season 3 [1080p]" is empty and its torrents left qBittorrent; only the decisions remain.
+		decisions: [
+			decision('2129159', '[Erai-raws] Grand Blue Season 3 - 01 [1080p CR WEB-DL AVC AAC][MultiSub][5FC5E59C]', 'approved', 'grand blue season 3', '1080p'),
+			decision('2135342', '[Erai-raws] Grand Blue Season 3 - 03 [1080p CR WEB-DL AVC AAC][MultiSub][052281B5]', 'blocked', 'grand blue season 3', '1080p'),
+			decision('2129161', '[Erai-raws] Grand Blue Season 3 - 01 [480p CR WEB-DL AVC AAC][MultiSub][05417FAA]', 'auto_downloaded', 'grand blue season 3', '480p'),
+		],
+	}
+	assert.deepEqual(findTargetTorrents(dandelion, sources).map((torrent) => torrent.torrentId), ['2169093', '2098812'])
+	assert.deepEqual(findTargetTorrents(grandBlue, sources).map((torrent) => torrent.torrentId), ['2129159'])
 })
 
 test('crawlTarget reports targets without a torrent id and Nyaa pages without an erai-raws link', async () => {
