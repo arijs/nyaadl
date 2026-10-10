@@ -748,3 +748,25 @@ export async function recordManualDecision(torrentIds: string[], status: Decisio
 		await saveBootstrapDiscovery(bootstrapDiscoveryState!)
 	}
 }
+
+// A qBittorrent failure was retried or suppressed: a manually approved item takes the decision's status,
+// and an item listed under qB failed moves to the box its decision belongs to, keeping page order.
+export function applyQbittorrentRecovery(result: BootstrapDiscoveryResult | undefined, decision: DecisionRecord, qbResponseText?: string): boolean {
+	const changed = applyManualDecision(result, [decision.torrentId], decision.status)
+	const index = result?.qbFailed?.findIndex((entry) => entry.torrentId === decision.torrentId) ?? -1
+	if (!result || index < 0) {
+		return changed
+	}
+	const [failed] = result.qbFailed!.splice(index, 1)
+	const recovered = { ...failed!, status: decision.status, reason: decision.reason, qbResponseText }
+	const list = decision.status === 'approved' ? (result.manual ??= []) : (result.autoApproved ??= [])
+	const insertAt = list.findIndex((entry) => entry.page > recovered.page || (entry.page === recovered.page && entry.itemIndex > recovered.itemIndex))
+	list.splice(insertAt < 0 ? list.length : insertAt, 0, recovered)
+	return true
+}
+
+export async function recordQbittorrentRecovery(decision: DecisionRecord, qbResponseText?: string): Promise<void> {
+	if (applyQbittorrentRecovery(bootstrapDiscoveryState, decision, qbResponseText)) {
+		await saveBootstrapDiscovery(bootstrapDiscoveryState!)
+	}
+}

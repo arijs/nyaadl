@@ -3,7 +3,7 @@ import { H3, getQuery, readBody } from 'h3'
 import { toNodeHandler } from 'h3/node'
 import { mkdir, readFile } from 'node:fs/promises'
 import { advanceCheckpoint, determineScrapePages } from './services/checkpointService'
-import { discoverLastDownloadedCheckpointStep, recordManualDecision } from './services/bootstrapDiscoveryService'
+import { discoverLastDownloadedCheckpointStep, recordManualDecision, recordQbittorrentRecovery } from './services/bootstrapDiscoveryService'
 import { badRequest, notFound, upstreamError } from './services/apiErrorService'
 import { addWatchRoot, loadAliases, removeWatchRoot, validateWatchRootPath } from './services/watchlistService'
 import { downloadTorrentFile, findDownloadedTorrentFileById } from './services/downloaderService'
@@ -294,7 +294,7 @@ async function retryQbittorrentFailureById(torrentId: string): Promise<DecisionR
 	if (!failure) {
 		throw notFound('Failed qBittorrent submission not found')
 	}
-	await submitDownloadedTorrent({
+	const { responseText } = await submitDownloadedTorrent({
 		item: failure.item,
 		torrentFilePath: failure.torrentFilePath,
 		torrentFilename: failure.torrentFilename,
@@ -314,6 +314,7 @@ async function retryQbittorrentFailureById(torrentId: string): Promise<DecisionR
 	})
 	decisionsState.push(decision)
 	await saveDecisions(decisionsState)
+	await recordQbittorrentRecovery(decision, responseText)
 	return decision
 }
 
@@ -333,6 +334,7 @@ async function suppressQbittorrentFailureById(torrentId: string): Promise<Decisi
 	})
 	decisionsState.push(decision)
 	await saveDecisions(decisionsState)
+	await recordQbittorrentRecovery(decision)
 	return decision
 }
 
