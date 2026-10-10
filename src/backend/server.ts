@@ -26,6 +26,7 @@ import { buildSkippedDecisions, listDecisionTorrentIds, listPendingTorrentIds } 
 import { buildTorrentHistoryPage } from './services/torrentHistoryService'
 import { buildBlacklistPage, parseBlacklistEntry } from './services/blacklistService'
 import { buildWatchTargetPage } from './services/watchTargetService'
+import { listWatchTargetFiles } from './services/watchTargetFilesService'
 import { countMatchingLocalFiles, analyzeFingerprintCombos } from './services/localLibraryService'
 import {
 	blacklistState,
@@ -535,6 +536,15 @@ async function main(): Promise<void> {
 
 	app.get('/api/watchlist', () => ({ success: true, data: watchTargetsState }))
 	app.get('/api/pending', () => ({ success: true, data: pendingState }))
+	app.post('/api/watchlist/target-files', async (event) => {
+		const body = await readBody<{ folderPath?: string; comboKey?: string }>(event).catch(() => undefined)
+		// Only folders of known watch targets are listed, never an arbitrary path from the request.
+		const target = watchTargetsState.find((entry) => entry.folderPath === body?.folderPath)
+		if (!target) {
+			throw notFound('Watch target not found')
+		}
+		return { success: true, data: await listWatchTargetFiles(target, decisionsState, body?.comboKey) }
+	})
 	app.post('/api/watchlist/targets', async (event) => {
 		const body = await readBody<{
 			page?: number

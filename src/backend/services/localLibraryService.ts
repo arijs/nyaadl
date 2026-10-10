@@ -101,35 +101,33 @@ function isVideoFile(fileName: string): boolean {
 	return videoExtensions.has(path.extname(fileName).toLowerCase())
 }
 
-export async function countMatchingLocalFiles(target: WatchTarget): Promise<number> {
+// Video files in the target folder that belong to the target's series and resolution.
+export async function listMatchingVideoFiles(target: WatchTarget): Promise<string[]> {
 	const folderEntries = await readdir(target.folderPath, { withFileTypes: true }).catch(() => [])
-	if (folderEntries.length === 0) {
-		return 0
-	}
-
 	const targetCandidates = new Set(target.matchCandidates.map((candidate) => normalizeText(candidate)))
-	let matchingCount = 0
+	return folderEntries
+		.filter((entry) => entry.isFile() && isVideoFile(entry.name))
+		.map((entry) => entry.name)
+		.filter((name) => {
+			const resolution = extractResolution(name)
+			if (resolution !== 'unknown' && target.resolution !== resolution) {
+				return false
+			}
+			return buildMatchCandidates(name, [name]).some((candidate) => targetCandidates.has(candidate))
+		})
+}
 
-	for (const entry of folderEntries) {
-		if (!entry.isFile() || !isVideoFile(entry.name)) {
-			continue
-		}
+export async function countMatchingLocalFiles(target: WatchTarget): Promise<number> {
+	return (await listMatchingVideoFiles(target)).length
+}
 
-		const resolution = extractResolution(entry.name)
-		if (resolution !== 'unknown' && target.resolution !== resolution) {
-			continue
-		}
-
-		const fileCandidates = buildMatchCandidates(entry.name, [entry.name])
-		if (fileCandidates.some((candidate) => targetCandidates.has(candidate))) {
-			matchingCount += 1
-		}
-	}
-
-	return matchingCount
+// Groups files released the same way (source / episode tag / multisub), e.g. "adn|none|true".
+export function buildFingerprintComboKey(fingerprint: ReleaseFingerprint): string {
+	return `${fingerprint.source ?? 'none'}|${fingerprint.episodeTag ?? 'none'}|${fingerprint.isMultisub}`
 }
 
 export interface FingerprintComboBreakdown {
+	key: string
 	source?: string
 	episodeTag?: string
 	isMultisub: boolean
@@ -149,31 +147,11 @@ function extractEpisodeNumber(value: string): number | undefined {
 }
 
 export async function analyzeFingerprintCombos(target: WatchTarget): Promise<FingerprintComboBreakdown[]> {
-	const folderEntries = await readdir(target.folderPath, { withFileTypes: true }).catch(() => [])
-	if (folderEntries.length === 0) {
-		return []
-	}
-
-	const targetCandidates = new Set(target.matchCandidates.map((candidate) => normalizeText(candidate)))
 	const comboMap = new Map<string, { episodes: Set<string>; fingerprint: ReleaseFingerprint }>()
 
-	for (const entry of folderEntries) {
-		if (!entry.isFile() || !isVideoFile(entry.name)) {
-			continue
-		}
-
-		const resolution = extractResolution(entry.name)
-		if (resolution !== 'unknown' && target.resolution !== resolution) {
-			continue
-		}
-
-		const fileCandidates = buildMatchCandidates(entry.name, [entry.name])
-		if (!fileCandidates.some((candidate) => targetCandidates.has(candidate))) {
-			continue
-		}
-
-		const fingerprint = extractReleaseFingerprint(entry.name)
-		const comboKey = `${fingerprint.source ?? 'none'}|${fingerprint.episodeTag ?? 'none'}|${fingerprint.isMultisub}`
+	for (const name of await listMatchingVideoFiles(target)) {
+		const fingerprint = extractReleaseFingerprint(name)
+		const comboKey = buildFingerprintComboKey(fingerprint)
 		const episodes = comboMap.get(comboKey)?.episodes ?? new Set<string>()
 
 		if (fingerprint.episode) {
@@ -183,7 +161,7 @@ export async function analyzeFingerprintCombos(target: WatchTarget): Promise<Fin
 		comboMap.set(comboKey, { episodes, fingerprint })
 	}
 
-	return Array.from(comboMap.values()).map((item) => {
+	return Array.from(comboMap, ([key, item]) => {
 		const numericEpisodes = Array.from(new Set(
 			Array.from(item.episodes)
 				.map((episode) => extractEpisodeNumber(episode))
@@ -199,6 +177,7 @@ export async function analyzeFingerprintCombos(target: WatchTarget): Promise<Fin
 			: []
 
 		return {
+			key,
 			source: item.fingerprint.source,
 			episodeTag: item.fingerprint.episodeTag,
 			isMultisub: item.fingerprint.isMultisub,

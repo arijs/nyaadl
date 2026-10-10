@@ -1,4 +1,4 @@
-import type { AnidbClientStatus, AppStatus, BlacklistEntry,EraiRawsStatus,BootstrapDiscoveryResult, DailyReport, PendingItem, QbittorrentFailureItem, QbittorrentRuntimeConfig, TorrentFilter, TorrentHistoryItem, WatchRootStatus, WatchTarget } from './types'
+import type { AnidbClientStatus, AppStatus, BlacklistEntry,EraiRawsStatus,BootstrapDiscoveryResult, DailyReport, DecisionStatus, PendingItem, QbittorrentFailureItem, QbittorrentRuntimeConfig, TorrentFilter, TorrentHistoryItem, TorrentItem, WatchRootStatus, WatchTarget } from './types'
 
 export interface ApiEnvelope<T> {
 	success: boolean
@@ -46,6 +46,7 @@ export interface TorrentHistoryResponse {
 export type TorrentHistoryListResponse = ApiEnvelope<TorrentHistoryResponse>
 
 export interface FingerprintComboBreakdown {
+	key: string
 	source?: string
 	episodeTag?: string
 	isMultisub: boolean
@@ -53,6 +54,19 @@ export interface FingerprintComboBreakdown {
 	minEpisode?: string
 	maxEpisode?: string
 	missingEpisodes?: string[]
+}
+
+// A local video file of a watch target, with the torrent it came from when the decision history knows it.
+export interface WatchTargetFile {
+	name: string
+	comboKey: string
+	episode?: string
+	sizeBytes?: number
+	torrent?: {
+		torrentId: string
+		status: DecisionStatus
+		item: TorrentItem
+	}
 }
 
 export interface WatchTargetRow {

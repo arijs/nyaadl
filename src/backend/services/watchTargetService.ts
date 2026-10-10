@@ -1,35 +1,6 @@
 import path from 'node:path'
 import type { WatchTarget } from '@shared/types'
-import type { WatchTargetResponse } from '@shared/api'
-
-export interface WatchTargetQuery {
-	page?: number
-	pageSize?: number
-	query?: string
-	resolutionFilter?: string
-	rootFilter?: string
-}
-
-export interface FingerprintComboBreakdown {
-	source?: string
-	episodeTag?: string
-	isMultisub: boolean
-	count: number
-	minEpisode?: string
-	maxEpisode?: string
-}
-
-export interface WatchTargetRow {
-	target: WatchTarget
-	rootPath?: string
-	rootName: string
-	matchingFilesCount?: number
-	fingerprintCombos?: FingerprintComboBreakdown[]
-}
-
-export interface WatchTargetPage extends WatchTargetResponse {
-	items: WatchTargetRow[]
-}
+import type { WatchTargetQuery, WatchTargetResponse as WatchTargetPage, WatchTargetRow } from '@shared/api'
 
 function normalizeQuery(value: string | undefined): string {
 	return value?.trim().toLowerCase() ?? ''

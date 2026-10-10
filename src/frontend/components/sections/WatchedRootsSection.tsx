@@ -5,6 +5,7 @@ import type { useWatchRoots } from '../../hooks/useWatchRoots'
 import type { useWatchTargets } from '../../hooks/useWatchTargets'
 import ActionButton from '../ui/ActionButton'
 import EmptyState from '../ui/EmptyState'
+import WatchTargetFileList from '../ui/WatchTargetFileList'
 
 interface WatchedRootsSectionProps {
 	status: Accessor<StatusResponse | undefined>
@@ -21,6 +22,18 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 	const [watchedRootsCollapseInitialized, setWatchedRootsCollapseInitialized] = createSignal(false)
 	const [watchTargetsCollapsed, setWatchTargetsCollapsed] = createSignal(true)
 	const [expandedRows, setExpandedRows] = createSignal<RowExpanded>({})
+	// Open file lists, keyed by "<folderPath>|<comboKey>".
+	const [openFileLists, setOpenFileLists] = createSignal<RowExpanded>({})
+	const isFileListOpen = (key: string) => openFileLists()[key] ?? false
+	const filesButton = (key: string) => (
+		<button
+			type="button"
+			class="ml-2 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-slate-300 transition hover:border-sky-300/50 hover:text-white"
+			onClick={() => setOpenFileLists((current) => ({ ...current, [key]: !current[key] }))}
+		>
+			{isFileListOpen(key) ? 'Hide files' : 'Files'}
+		</button>
+	)
 
 	createEffect(() => {
 		const statuses = props.status()?.data.status.watchRootStatuses
@@ -206,6 +219,7 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 															{(combo) => (
 																<span class="text-slate-300">
 																	{combo().source ?? 'no-source'} {combo().episodeTag ? `/ ${combo().episodeTag}` : ''} / {combo().isMultisub ? 'multisub' : 'mono'} · {combo().count} ep{combo().count !== 1 ? 's' : ''} {combo().minEpisode && combo().maxEpisode ? `(${combo().minEpisode}–${combo().maxEpisode})` : ''}
+																	{filesButton(`${rowKey}|${combo().key}`)}
 																</span>
 															)}
 														</Show>
@@ -218,6 +232,13 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 																	Missing ep {row.fingerprintCombos?.[0]?.missingEpisodes?.join(', ')}.
 																</span>
 															</div>
+														)}
+													</Show>
+													<Show when={row.fingerprintCombos?.[0]}>
+														{(combo) => (
+															<Show when={isFileListOpen(`${rowKey}|${combo().key}`)}>
+																<WatchTargetFileList folderPath={rowKey} comboKey={combo().key} />
+															</Show>
 														)}
 													</Show>
 												</div>
@@ -238,6 +259,7 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 															<div class="text-xs text-slate-300 bg-white/5 rounded px-2 py-1.5">
 																<div class="font-medium">
 																	{combo.source ?? 'no-source'} {combo.episodeTag ? `/ ${combo.episodeTag}` : ''} / {combo.isMultisub ? 'multisub' : 'mono'}
+																	{filesButton(`${rowKey}|${combo.key}`)}
 																</div>
 																<div class="text-slate-400">
 																	{combo.count} episode{combo.count !== 1 ? 's' : ''} {combo.minEpisode && combo.maxEpisode ? `(${combo.minEpisode}–${combo.maxEpisode})` : ''}
@@ -247,6 +269,9 @@ export default function WatchedRootsSection(props: WatchedRootsSectionProps) {
 																		<span class="inline-flex h-4 w-4 items-center justify-center rounded-full border border-rose-400/50 bg-rose-400/15 text-[10px] font-bold leading-none text-rose-100">!</span>
 																		<span>Missing ep {combo.missingEpisodes?.join(', ')}.</span>
 																	</div>
+																</Show>
+																<Show when={isFileListOpen(`${rowKey}|${combo.key}`)}>
+																	<WatchTargetFileList folderPath={rowKey} comboKey={combo.key} />
 																</Show>
 															</div>
 														)}
