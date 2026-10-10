@@ -7,6 +7,8 @@ import parseTorrent from 'parse-torrent'
 const qbittorrentPasswordPath = path.join(process.cwd(), 'qbittorrent password.txt')
 
 let cachedSidCookie: string | undefined
+// qBittorrent's session cookie: "SID=…" in older versions, "QBT_SID_<port>=…" in newer ones.
+const sessionCookiePattern = /\b(?:QBT_)?SID(?:_\d+)?=[^;]+/i
 const qbittorrentRuntimeState: { baseUrl: string; username: string; password?: string } = {
 	baseUrl: 'http://localhost:6055',
 	username: 'admin',
@@ -127,7 +129,7 @@ async function loadSidCookie(): Promise<string | undefined> {
 	}
 
 	const setCookie = response.headers.get('set-cookie') ?? ''
-	const sidMatch = /SID=[^;]+/i.exec(setCookie)
+	const sidMatch = sessionCookiePattern.exec(setCookie)
 	if (sidMatch?.[0]) {
 		cachedSidCookie = sidMatch[0]
 	}
