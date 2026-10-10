@@ -123,7 +123,6 @@ export default function TorrentHistorySection(props: TorrentHistorySectionProps)
 										</p>
 									</div>
 									<div class="flex flex-col items-end gap-2">
-										<span class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-slate-300">{torrent.torrentId}</span>
 										<button
 											type="button"
 											class="rounded-full border border-rose-400/30 bg-rose-400/10 px-3 py-1 text-[11px] font-medium text-rose-200 opacity-0 pointer-events-none transition-opacity duration-150 hover:bg-rose-400/20 group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto"
