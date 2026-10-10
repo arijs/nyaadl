@@ -135,7 +135,7 @@ export default function ExecutionStateSection(props: ExecutionStateSectionProps)
 									<div class="rounded-2xl border border-white/10 bg-black/10 p-4">
 										<div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
 											<div class="min-w-0">
-												<p class="truncate font-medium text-white">{failure.item.title}</p>
+												<p class="wrap-break-word font-medium text-white">{failure.item.title}</p>
 												<NyaaMeta torrentId={failure.torrentId} category={failure.item.category} sizeText={failure.item.sizeText} />
 												<p class="mt-1 text-xs text-slate-300">page {failure.item.page} · target {failure.targetFolderPath}</p>
 												<p class="mt-2 text-xs text-rose-100">{failureMessage.main}</p>
