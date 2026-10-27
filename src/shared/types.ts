@@ -1,3 +1,5 @@
+import type { ReleaseTags } from './releaseTitle'
+
 export type TorrentFilter = 'all' | 'auto_downloaded' | 'already_downloaded' | 'blocked' | 'pending' | 'approved' | 'skipped'
 
 export type DecisionStatus = 'auto_downloaded' | 'already_downloaded' | 'blocked' | 'pending' | 'approved' | 'skipped'
@@ -35,6 +37,8 @@ export interface BlacklistEntry {
 	key: string
 	seriesKey: string
 	resolution: string
+	// Variant entries only block releases carrying all of these tags (see releaseTitle.ts).
+	tags?: ReleaseTags
 }
 
 export interface PendingItem {

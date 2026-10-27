@@ -1,4 +1,5 @@
 import type { AnidbClientStatus, AppStatus, BlacklistEntry,EraiRawsStatus,BootstrapDiscoveryResult, DailyReport, DecisionStatus, PendingItem, QbittorrentFailureItem, QbittorrentRuntimeConfig, TorrentFilter, TorrentHistoryItem, TorrentItem, WatchRootStatus, WatchTarget } from './types'
+import type { ReleaseTags } from './releaseTitle'
 
 export interface ApiEnvelope<T> {
 	success: boolean
@@ -184,6 +185,7 @@ export interface BlacklistAddRequest {
 	series?: string
 	resolution?: string
 	torrentId?: string
+	tags?: ReleaseTags
 }
 
 export interface BlacklistAddResult {
@@ -208,6 +210,9 @@ export type FolderTitleVariationKey = keyof FolderTitleVariations
 export interface FolderOptionsData {
 	fromTitle: FolderTitleVariations
 	fromFilename: FolderTitleVariations
+	// Folder names from each title of the release, for the groups releaseTitle.ts knows.
+	fromRomaji?: FolderTitleVariations
+	fromEnglish?: FolderTitleVariations
 	watchRoots: WatchRootStatus[]
 }
 

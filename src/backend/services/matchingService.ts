@@ -1,4 +1,7 @@
+import { parseReleaseTitle } from '@shared/releaseTitle'
+import type { ReleaseTagKey, ReleaseTags } from '@shared/releaseTitle'
 import type { TorrentItem, WatchTarget } from '@shared/types'
+import { parseBlacklistEntry } from './blacklistService'
 import { buildCanonicalSeriesKey, buildMatchCandidates, buildNormalizedKey, deriveSeriesBase, extractResolution, normalizeText } from './normalizeService'
 
 export interface TorrentSourceSnapshot {
@@ -12,6 +15,7 @@ export interface TorrentMatchResult {
 	resolution: string
 	normalizedKey: string
 	matchCandidates: string[]
+	tags: ReleaseTags
 	matchedTarget?: WatchTarget
 }
 
@@ -28,6 +32,7 @@ export function buildTorrentMatchResult(snapshot: TorrentSourceSnapshot, aliases
 		resolution,
 		normalizedKey,
 		matchCandidates,
+		tags: parseReleaseTitle(snapshot.title)?.tags ?? {},
 	}
 }
 
@@ -51,12 +56,15 @@ export function matchTorrentToWatchTargets(item: TorrentMatchResult, watchTarget
 	return undefined
 }
 
+// Blocked when the series (key or any match candidate) and the resolution match an entry, and the
+// title carries every tag of that entry (an entry without tags blocks the whole series+resolution).
 export function isTorrentBlacklisted(item: TorrentMatchResult, blacklist: string[]): boolean {
-	if (blacklist.includes(item.normalizedKey)) {
-		return true
-	}
-
-	return item.matchCandidates.some((candidate) => blacklist.includes(buildNormalizedKey(candidate, item.resolution)))
+	const seriesKeys = new Set([item.normalizedKey, ...item.matchCandidates.map((candidate) => buildNormalizedKey(candidate, item.resolution))])
+	return blacklist.some((key) => {
+		const entry = parseBlacklistEntry(key)
+		return seriesKeys.has(buildNormalizedKey(entry.seriesKey, entry.resolution))
+			&& Object.entries(entry.tags ?? {}).every(([tag, value]) => item.tags[tag as ReleaseTagKey] === value)
+	})
 }
 
 export function toTorrentItem(base: {

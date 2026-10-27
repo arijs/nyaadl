@@ -22,10 +22,11 @@ import { inspectAndClassifyTorrent, savePageSnapshot } from './services/nyaaTorr
 import { applyTorrentItemBackfill, backfillFromLocalSnapshots } from './services/decisionBackfillService'
 import { parseTorrentMetainfo } from './services/torrentMetainfoService'
 import { loadBlacklist, saveBlacklist, saveBootstrapDiscovery, saveDecisions, saveLastProcessed, savePending, saveQbittorrentSubmitted } from './services/stateService'
-import { buildNormalizedKey, deriveSeriesBase, deriveFolderNameFromTitle } from './services/normalizeService'
+import { buildNormalizedKey, deriveSeriesBase, deriveFolderNameFromTitle, deriveFolderNamesByTitle } from './services/normalizeService'
 import { buildSkippedDecisions, forgetDecisions, listDecisionTorrentIds, listPendingTorrentIds, resetTorrentToPending } from './services/stateService'
 import { buildTorrentHistoryPage } from './services/torrentHistoryService'
-import { buildBlacklistPage, parseBlacklistEntry } from './services/blacklistService'
+import { buildBlacklistKey, buildBlacklistPage, parseBlacklistEntry, sanitizeBlacklistTags } from './services/blacklistService'
+import { buildTorrentMatchResult, isTorrentBlacklisted } from './services/matchingService'
 import { buildWatchTargetPage } from './services/watchTargetService'
 import { attachQbittorrentTorrents, listWatchTargetFiles } from './services/watchTargetFilesService'
 import { getDetailsCrawlerStatus, startDetailsCrawler, stopDetailsCrawler } from './services/detailsCrawlerService'
@@ -38,7 +39,8 @@ import {
 	initQbittorrentIndex,
 	rebuildQbittorrentIndex,
 } from './services/qbittorrentIndexService'
-import type { WatchTargetFilesResponse } from '@shared/api'
+import type { BlacklistAddRequest, WatchTargetFilesResponse } from '@shared/api'
+import type { ReleaseTags } from '@shared/releaseTitle'
 import { countMatchingLocalFiles, analyzeFingerprintCombos } from './services/localLibraryService'
 import {
 	blacklistState,
@@ -657,7 +659,8 @@ async function main(): Promise<void> {
 	})
 
 	app.post('/api/blacklist', async (event) => {
-		const body = await readBody<{ series?: string; resolution?: string; torrentId?: string }>(event).catch(() => undefined)
+		const body = await readBody<BlacklistAddRequest>(event).catch(() => undefined)
+		const aliases = await loadAliases()
 
 		let series: string | undefined
 		let resolution: string | undefined
@@ -666,30 +669,31 @@ async function main(): Promise<void> {
 			if (!decision) {
 				throw notFound('No decision history for torrent id')
 			}
-			series = decision.item.seriesBaseRaw
-			resolution = decision.item.resolution
+			// Same series key the classification computes for this title.
+			const match = buildTorrentMatchResult({ title: decision.item.title, videoNames: [] }, aliases)
+			series = match.seriesKey
+			resolution = match.resolution
 		} else {
-			series = body?.series
+			series = body?.series?.trim() && deriveSeriesBase(body.series)
 			resolution = body?.resolution
 		}
-		series = series?.trim()
 		resolution = resolution?.trim()
 		if (!series || !resolution) {
 			throw badRequest('Missing series or resolution')
 		}
 
-		const blacklistKey = buildNormalizedKey(deriveSeriesBase(series), resolution)
+		const blacklistKey = buildBlacklistKey(series, resolution, sanitizeBlacklistTags(body?.tags))
 		if (!blacklistState.includes(blacklistKey)) {
 			blacklistState.push(blacklistKey)
 		}
 
-		// Retroactive sweep (R3): pending items matching the new key are dropped from the
+		// Retroactive sweep (R3): pending items the new entry blocks are dropped from the
 		// queue and recorded as blocked. Already-downloaded/approved records are left as-is.
 		let removedPending = 0
 		for (let index = pendingState.length - 1; index >= 0; index -= 1) {
 			const pendingItem = pendingState[index]!
-			const pendingKey = buildNormalizedKey(deriveSeriesBase(pendingItem.seriesKey ?? pendingItem.item.seriesBaseRaw), pendingItem.item.resolution)
-			if (pendingKey !== blacklistKey) {
+			const pendingMatch = buildTorrentMatchResult({ title: pendingItem.item.title, videoNames: pendingItem.internalNames ?? [] }, aliases)
+			if (!isTorrentBlacklisted(pendingMatch, [blacklistKey])) {
 				continue
 			}
 			pendingState.splice(index, 1)
@@ -760,11 +764,14 @@ async function main(): Promise<void> {
 		}
 		const firstInternalName = resolvedInternalNames[0]
 		const fromFilename = firstInternalName ? deriveFolderNameFromTitle(firstInternalName) : fromTitle
+		const byTitle = deriveFolderNamesByTitle(pendingItem.item.title)
 		return {
 			success: true,
 			data: {
 				fromTitle,
 				fromFilename,
+				fromRomaji: byTitle.romaji,
+				fromEnglish: byTitle.english,
 				watchRoots: watchRootStatusesState,
 			},
 		}
@@ -804,8 +811,9 @@ async function main(): Promise<void> {
 			throw notFound('Pending item not found')
 		}
 		const pendingItem = pendingState[pendingIndex]!
-		const seriesKey = deriveSeriesBase(pendingItem.seriesKey ?? pendingItem.item.seriesBaseRaw)
-		const blacklistKey = buildNormalizedKey(seriesKey, pendingItem.item.resolution)
+		const body = await readBody<{ tags?: ReleaseTags }>(event).catch(() => undefined)
+		const match = buildTorrentMatchResult({ title: pendingItem.item.title, videoNames: [] }, await loadAliases())
+		const blacklistKey = buildBlacklistKey(match.seriesKey, match.resolution, sanitizeBlacklistTags(body?.tags))
 		if (!blacklistState.includes(blacklistKey)) {
 			blacklistState.push(blacklistKey)
 		}

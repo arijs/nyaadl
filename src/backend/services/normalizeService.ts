@@ -1,7 +1,11 @@
+import type { FolderTitleVariations } from '@shared/api'
+import { parsedReleaseGroups, parseReleaseTitle, releaseIdentityTitle } from '@shared/releaseTitle'
+import type { ParsedRelease } from '@shared/releaseTitle'
+
 const reWhitespace = /\s+/g
-const reReleasePrefix = /^\[(?:Erai-raws|ToonsHub)\]\s*/i
-// "[ToonsHub] Name S01E03 REPACK 1080p ..." has no "- 03" nor bracketed metadata.
-const reToonsHubTitle = /^(\[ToonsHub\]\s*.+?)\s+S(\d{1,2})E(\d{1,4}(?:v\d+)?)\b\s*(.*)$/i
+const reReleasePrefix = /^\[Erai-raws\]\s*/i
+// Folder names of the groups releaseTitle knows: "[ToonsHub] Title [1080p] [...] (...)" -> "[ToonsHub] Title".
+const reParsedGroupFolder = new RegExp(`^(\\[(?:${parsedReleaseGroups.join('|')})\\]\\s*[^[(]+?)\\s*(?:[[(].*)?$`, 'i')
 // Optional label sitting between the hyphen and the episode number, e.g. "- Special 03",
 // "- OVA 02". Without this the label + number leaks into the series key and every special
 // is treated as a distinct series.
@@ -21,18 +25,27 @@ const reInnerTitleHyphen = /(?<=[a-z0-9])-(?=[a-z0-9])/g
 
 const reFolderEpisodeBeforeMetadata = new RegExp(`\\s*-\\s*(?:${episodeLabelSource})?\\d{1,4}(?:v\\d+)?${episodeTrailerSource}(?:\\s*\\([^)]*\\))?(?=(?:\\s*(?:\\[[^\\]]*\\]|\\([^)]*\\)))*\\s*$)`, 'i')
 
-// Rewrites a ToonsHub title into the Erai shape "[ToonsHub] Name - 03 [metadata]" so the
-// episode and metadata rules below apply to it.
-// ponytail: season 1 is dropped (usually unnamed); later seasons keep "S02" in the series name.
-function canonicalizeToonsHubTitle(value: string): string {
-	return value.replace(reToonsHubTitle, (_match, name: string, season: string, episode: string, metadata: string) => {
-		const seasonPart = Number(season) === 1 ? '' : ` S${season}`
-		return `${name}${seasonPart} - ${episode}${metadata ? ` [${metadata}]` : ''}`
-	})
+function parseGroupRelease(value: string): ParsedRelease | undefined {
+	const parsed = parseReleaseTitle(value)
+	return parsed && parsed.group !== 'Erai-raws' ? parsed : undefined
+}
+
+// "[Group] Title", plus " S02" from season 2 on.
+function groupSeriesName(parsed: ParsedRelease, which: 'english' | 'romaji'): string | undefined {
+	const title = releaseIdentityTitle(parsed, which)
+	return title ? `[${parsed.group}] ${title}` : undefined
+}
+
+// One series per release group: titles (English title, romaji when there is none) and folder names
+// of the groups releaseTitle knows become "[Group] Title"; the rest is left to the Erai-shaped rules.
+function canonicalizeGroupRelease(value: string): string {
+	const parsed = parseGroupRelease(value)
+	const name = parsed && (groupSeriesName(parsed, 'english') ?? groupSeriesName(parsed, 'romaji'))
+	return name ?? value.replace(reParsedGroupFolder, '$1')
 }
 
 export function normalizeText(value: string): string {
-	return canonicalizeToonsHubTitle(value
+	return canonicalizeGroupRelease(value
 		.trim()
 		.replace(reVideoExtension, ''))
 		.replace(reReleasePrefix, '')
@@ -67,25 +80,10 @@ export function buildNormalizedKey(seriesKey: string, resolution: string): strin
 	return `${seriesKey}::${resolution.toLowerCase()}`
 }
 
+// Keys are built normalized when they are created. Re-deriving them on every load would rewrite them
+// whenever the normalization rules change (and mangle the tags segment of variant keys).
 export function normalizeBlacklistKey(value: string): string {
-	const trimmed = value.trim().toLowerCase()
-	if (!trimmed) {
-		return ''
-	}
-
-	const separatorIndex = trimmed.lastIndexOf('::')
-	if (separatorIndex < 0) {
-		return deriveSeriesBase(trimmed)
-	}
-
-	const seriesPart = trimmed.slice(0, separatorIndex)
-	const resolutionPart = trimmed.slice(separatorIndex + 2)
-	const normalizedSeries = deriveSeriesBase(seriesPart)
-	const normalizedResolution = resolutionPart.trim().toLowerCase() || 'unknown'
-	if (!normalizedSeries) {
-		return ''
-	}
-	return buildNormalizedKey(normalizedSeries, normalizedResolution)
+	return value.trim().toLowerCase()
 }
 
 export function sanitizePathSegment(value: string): string {
@@ -97,10 +95,31 @@ function expandPostProcessedCandidateVariants(candidate: string): string[] {
 	return [candidate, hyphenAsSpace]
 }
 
-export function deriveFolderNameFromTitle(rawTitle: string): { fullMeta: string, onlyRes: string } {
-	const fullMeta = canonicalizeToonsHubTitle(rawTitle
+function groupFolderName(parsed: ParsedRelease, which: 'english' | 'romaji'): FolderTitleVariations | undefined {
+	const name = groupSeriesName(parsed, which)
+	if (!name) {
+		return undefined
+	}
+	const resolution = parsed.resolution ?? 'unknown'
+	const meta = [resolution, ...Object.values(parsed.tags).map((tag) => tag.toUpperCase())].join(' ')
+	return { fullMeta: `${name} [${meta}]`, onlyRes: `${name} [${resolution}]` }
+}
+
+// Folder names from the romaji and from the English title, for the groups releaseTitle knows.
+export function deriveFolderNamesByTitle(rawTitle: string): { romaji?: FolderTitleVariations; english?: FolderTitleVariations } {
+	const parsed = parseGroupRelease(rawTitle)
+	return parsed ? { romaji: groupFolderName(parsed, 'romaji'), english: groupFolderName(parsed, 'english') } : {}
+}
+
+export function deriveFolderNameFromTitle(rawTitle: string): FolderTitleVariations {
+	const byTitle = deriveFolderNamesByTitle(rawTitle)
+	const groupFolder = byTitle.english ?? byTitle.romaji
+	if (groupFolder) {
+		return groupFolder
+	}
+	const fullMeta = rawTitle
 		.trim()
-		.replace(reVideoExtension, ''))
+		.replace(reVideoExtension, '')
 		.replace(reFolderEpisodeBeforeMetadata, '')
 		.replace(reTrailingHash, '')
 		.replace(reWhitespace, ' ')
@@ -117,7 +136,10 @@ export function deriveFolderNameFromTitle(rawTitle: string): { fullMeta: string,
 }
 
 export function buildMatchCandidates(title: string, internalNames: string[]): string[] {
-	const rawItems = [title, ...internalNames].filter((item): item is string => Boolean(item && item.trim()))
+	// Both titles of a parsed release, so a folder named after either one matches.
+	const parsed = parseGroupRelease(title)
+	const titleNames = parsed ? [groupSeriesName(parsed, 'english'), groupSeriesName(parsed, 'romaji')] : []
+	const rawItems = [title, ...titleNames, ...internalNames].filter((item): item is string => Boolean(item && item.trim()))
 	const normalizedItems = rawItems
 		.map((item) => normalizeText(item))
 		.filter((item) => Boolean(item) && item !== 'unknown')

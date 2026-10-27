@@ -170,26 +170,25 @@ export async function scanWatchTargets(): Promise<WatchTarget[]> {
 			if (!entry.isDirectory()) {
 				continue
 			}
-			const folderName = entry.name
-			const folderPath = path.join(rootPath, folderName)
-			const seriesBase = deriveSeriesBase(folderName)
-			const resolution = extractResolution(folderName)
-			const seriesKey = buildCanonicalSeriesKey(seriesBase, aliases)
-			const normalizedKey = buildNormalizedKey(seriesKey, resolution)
-			const matchCandidates = buildWatchTargetMatchCandidates(folderName, seriesBase, seriesKey, aliases)
-
-			targets.push({
-				folderName,
-				folderPath,
-				seriesKey,
-				resolution,
-				normalizedKey,
-				matchCandidates,
-			})
+			targets.push(buildWatchTarget(path.join(rootPath, entry.name), entry.name, aliases))
 		}
 	}
 
 	return targets.sort((left, right) => left.folderName.localeCompare(right.folderName))
+}
+
+export function buildWatchTarget(folderPath: string, folderName: string, aliases: Record<string, string>): WatchTarget {
+	const seriesBase = deriveSeriesBase(folderName)
+	const resolution = extractResolution(folderName)
+	const seriesKey = buildCanonicalSeriesKey(seriesBase, aliases)
+	return {
+		folderName,
+		folderPath,
+		seriesKey,
+		resolution,
+		normalizedKey: buildNormalizedKey(seriesKey, resolution),
+		matchCandidates: buildWatchTargetMatchCandidates(folderName, seriesBase, seriesKey, aliases),
+	}
 }
 
 /**
