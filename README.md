@@ -136,7 +136,7 @@ When new torrents appear on Nyaa, the system tries to connect each release to on
 When the system cannot safely determine the destination, the screen shows one item needing review. You resolve it with one of three actions:
 
 - `Approve`: downloads the `.torrent`, resolves the target folder from the best available metadata, records the decision, and tries to submit it to qBittorrent. If no matching watch target exists, a destination picker opens before the torrent is submitted. See [Approving Torrents Without a Matched Folder](#approving-torrents-without-a-matched-folder).
-- `Blacklist`: rejects that series and resolution combination for future runs. The blacklist key is based on normalized series name plus resolution, so future items with the same series and resolution are auto-blocked.
+- `Blacklist`: rejects that series and resolution combination for future runs. The blacklist key is based on normalized series name plus resolution, so future items with the same series and resolution are auto-blocked. From the Pending queue and the Torrent history, the confirmation modal also lists the release tags read from the title (source, video codec, audio, audio languages, subtitles, censorship, REPACK); ticking some of them blocks only that variant (`series::res::source=bili;videoCodec=h265`): a release is blocked only when its title carries all of the ticked tags.
 - `Skip`: dismisses the current item without blacklisting it. This only skips that specific torrent. If a later torrent with the same series and resolution appears again, the system may ask you again.
 
 Manual review happens one item at a time both in the live scraping card and in the `Pending queue` section.
@@ -367,7 +367,18 @@ Visible items:
 - one card per pending item with the torrent title, detected series base name, resolution, source page, the nyaa row details captured at scrape time (size, published date, seeders, leechers, downloads), queue reason, current status badge, and `Approve`, `Blacklist`, `Skip` actions
 - inline error panel if a queue action failed
 
+Under each title, chips show what the title parser understood (see *Release groups outside Erai-raws*).
+
 Use this section when you want to clear older unresolved items without relying on the latest scraping result card.
+
+### Release groups outside Erai-raws
+
+Titles of ToonsHub, VARYG, denisplay, hisako, Judas, Doomdos, Yameii, AnoZu and SubsPlease are parsed by `src/shared/releaseTitle.ts` (one pattern per group, written against the titles seen so far; other layouts fall back to the generic normalization):
+
+- English title, romaji title, season, episode, version (`v2`), episode name (VARYG), batch, CRC32, and the release tags (source `cr`/`adn`/`bili`/`ov`/`iqiyi`/`amzn`/`liv`/`unext`, `web-dl`/`bd`, video `h264`/`h265`/`av1`, `10bit`, audio `aac`/`aac2.0`/`ddp2.0`/`flac`, audio languages `dual`/`multi`/`english-dub`, subtitles `multi`/`english`, `uncensored`/`censored`, `repack`).
+- One series per group: the series key is `[group] <English title>` (romaji when there is none), plus ` S02` from season 2 on, e.g. `[toonshub] even the student council has its holes`.
+- Watch folders of these groups reduce to `[Group] <title>` (whatever follows the first `[` or `(` is ignored), and a torrent matches a folder named after either of its titles, so `[ToonsHub] Ibitte Konai Gibo to Gishi [1080p]` receives `[ToonsHub] My Stepmother and Stepsisters Arent Wicked S01E12 …`.
+- When approving into a new folder, the destination modal offers `Romaji title` and `English title` next to `From series title` / `From video filename`.
 
 ### Torrent history
 

@@ -9,6 +9,8 @@ export interface ApproveDestinationState {
 	continueDiscovery: boolean
 	fromTitle: FolderTitleVariations
 	fromFilename: FolderTitleVariations
+	fromRomaji?: FolderTitleVariations
+	fromEnglish?: FolderTitleVariations
 	// titleVariation: FolderTitleVariationKey
 	watchRoots: FolderOptionsData['watchRoots']
 }
@@ -19,14 +21,22 @@ interface ApproveDestinationModalProps {
 	onCancel: () => void
 }
 
+type FolderSource = 'title' | 'filename' | 'romaji' | 'english'
+
 export default function ApproveDestinationModal(props: ApproveDestinationModalProps) {
+	const sources = (): Array<{ key: FolderSource; label: string; names?: FolderTitleVariations }> => [
+		{ key: 'title', label: 'From series title', names: props.state.fromTitle },
+		{ key: 'romaji', label: 'Romaji title', names: props.state.fromRomaji },
+		{ key: 'english', label: 'English title', names: props.state.fromEnglish },
+		{ key: 'filename', label: 'From video filename', names: props.state.fromFilename },
+	]
 	const allRoots = () => props.state.watchRoots
 	const defaultRoot = () => allRoots().find((r) => r.exists && r.isDirectory)?.path ?? allRoots()[0]?.path ?? ''
 
 	const [selectedRoot, setSelectedRoot] = createSignal(defaultRoot())
 	const [useCustomRoot, setUseCustomRoot] = createSignal(allRoots().length === 0)
 	const [customRootInput, setCustomRootInput] = createSignal('')
-	const [activeSource, setActiveSource] = createSignal<'title' | 'filename'>('title')
+	const [activeSource, setActiveSource] = createSignal<FolderSource>('title')
 	const [activeVariation, setActiveVariation] = createSignal<FolderTitleVariationKey>('onlyRes')
 	const [folderName, setFolderName] = createSignal(props.state.fromTitle[activeVariation()])
 
@@ -39,10 +49,10 @@ export default function ApproveDestinationModal(props: ApproveDestinationModalPr
 	}
 	const canConfirm = () => rootPath().length > 0 && folderName().trim().length > 0
 
-	function applySource(source: 'title' | 'filename', variation: FolderTitleVariationKey) {
+	function applySource(source: FolderSource, variation: FolderTitleVariationKey) {
 		setActiveSource(source)
 		setActiveVariation(variation)
-		setFolderName(source === 'filename' ? props.state.fromFilename[variation] : props.state.fromTitle[variation])
+		setFolderName((sources().find((item) => item.key === source)?.names ?? props.state.fromTitle)[variation])
 	}
 
 	function handleConfirm() {
@@ -102,28 +112,22 @@ export default function ApproveDestinationModal(props: ApproveDestinationModalPr
 					<div>
 						<label class="mb-1.5 block text-xs font-medium uppercase tracking-wider text-slate-400">Series folder name</label>
 						<div class="space-y-1.5">
-							<button
-								type="button"
-								onClick={() => applySource('title', activeVariation())}
-								class={`flex w-full items-start gap-2.5 rounded-xl border px-3 py-2 text-left text-sm transition-colors ${activeSource() === 'title' ? 'border-sky-500/40 bg-sky-500/10 text-sky-100' : 'border-white/10 bg-white/5 text-slate-300 hover:border-white/20'}`}
-							>
-								<span class={`mt-0.5 h-3.5 w-3.5 shrink-0 rounded-full border-2 ${activeSource() === 'title' ? 'border-sky-400 bg-sky-400' : 'border-slate-500'}`} />
-								<span class="min-w-0">
-									<span class="block text-xs font-medium">From series title</span>
-									<span class="mt-0.5 block break-words text-[11px] text-slate-400">{props.state.fromTitle[activeVariation()]}</span>
-								</span>
-							</button>
-							<button
-								type="button"
-								onClick={() => applySource('filename', activeVariation())}
-								class={`flex w-full items-start gap-2.5 rounded-xl border px-3 py-2 text-left text-sm transition-colors ${activeSource() === 'filename' ? 'border-sky-500/40 bg-sky-500/10 text-sky-100' : 'border-white/10 bg-white/5 text-slate-300 hover:border-white/20'}`}
-							>
-								<span class={`mt-0.5 h-3.5 w-3.5 shrink-0 rounded-full border-2 ${activeSource() === 'filename' ? 'border-sky-400 bg-sky-400' : 'border-slate-500'}`} />
-								<span class="min-w-0">
-									<span class="block text-xs font-medium">From video filename</span>
-									<span class="mt-0.5 block break-words text-[11px] text-slate-400">{props.state.fromFilename[activeVariation()]}</span>
-								</span>
-							</button>
+							{/* Romaji/English only for the release groups the title parser knows. */}
+							<For each={sources().filter((source) => source.names)}>
+								{(source) => (
+									<button
+										type="button"
+										onClick={() => applySource(source.key, activeVariation())}
+										class={`flex w-full items-start gap-2.5 rounded-xl border px-3 py-2 text-left text-sm transition-colors ${activeSource() === source.key ? 'border-sky-500/40 bg-sky-500/10 text-sky-100' : 'border-white/10 bg-white/5 text-slate-300 hover:border-white/20'}`}
+									>
+										<span class={`mt-0.5 h-3.5 w-3.5 shrink-0 rounded-full border-2 ${activeSource() === source.key ? 'border-sky-400 bg-sky-400' : 'border-slate-500'}`} />
+										<span class="min-w-0">
+											<span class="block text-xs font-medium">{source.label}</span>
+											<span class="mt-0.5 block break-words text-[11px] text-slate-400">{source.names![activeVariation()]}</span>
+										</span>
+									</button>
+								)}
+							</For>
 						</div>
 					</div>
 					{/* Folder name variation (only resolution / full metadata) */}

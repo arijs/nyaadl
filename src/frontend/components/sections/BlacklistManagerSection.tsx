@@ -123,6 +123,13 @@ export default function BlacklistManagerSection(props: BlacklistManagerSectionPr
 												<span class="rounded-full border border-cyan-300/35 bg-cyan-300/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-100">
 													{item.resolution}
 												</span>
+												<For each={Object.entries(item.tags ?? {})}>
+													{([tag, value]) => (
+														<span class="rounded-full border border-rose-300/30 bg-rose-300/10 px-2 py-0.5 text-[10px] text-rose-100" title="Só bloqueia esta variante">
+															{tag}={value}
+														</span>
+													)}
+												</For>
 												<button
 													type="button"
 													class={

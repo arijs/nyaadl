@@ -89,6 +89,7 @@ export default function App() {
 					status={status}
 					dashboardActions={dashboardActions}
 					bootstrapWorkflow={bootstrapWorkflow}
+					torrentHistoryFilter={torrentHistoryFilter}
 				/>
 
 				<BlacklistManagerSection blacklistManager={blacklistManager} />

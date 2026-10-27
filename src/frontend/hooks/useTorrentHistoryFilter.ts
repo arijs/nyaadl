@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createResource, createSignal } from 'solid-js'
 import type { TorrentHistoryQuery, TorrentHistoryResponse } from '../../shared/api'
+import type { ReleaseTags } from '../../shared/releaseTitle'
 import type { BlacklistConfirmState } from '../components/ui/BlacklistConfirmModal'
 import { postJsonBody, requestJson } from '../lib/httpClient'
 import type { TorrentFilter } from '../types'
@@ -103,7 +104,7 @@ export function useTorrentHistoryFilter() {
 		setBlacklistModal(null)
 	}
 
-	async function confirmBlacklist() {
+	async function confirmBlacklist(tags: ReleaseTags) {
 		const modal = blacklistModal()
 		if (!modal) {
 			return
@@ -111,7 +112,11 @@ export function useTorrentHistoryFilter() {
 		setIsBlacklisting(true)
 		setBlacklistError(undefined)
 		try {
-			await requestJson('/api/blacklist', 'POST', { torrentId: modal.torrentId })
+			if (modal.submit) {
+				await modal.submit(tags)
+			} else {
+				await requestJson('/api/blacklist', 'POST', { torrentId: modal.torrentId, tags })
+			}
 			setBlacklistModal(null)
 			await refetch()
 		} catch (error) {

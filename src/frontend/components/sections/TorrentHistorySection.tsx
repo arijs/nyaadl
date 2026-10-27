@@ -3,9 +3,11 @@ import type { useBootstrapWorkflow } from '../../hooks/useBootstrapWorkflow'
 import type { useDashboardActions } from '../../hooks/useDashboardActions'
 import type { useTorrentHistoryFilter } from '../../hooks/useTorrentHistoryFilter'
 import { statusTagClass } from '../../lib/statusTag'
+import type { TorrentHistoryItem } from '../../../shared/types'
 import type { TorrentFilter } from '../../types'
 import EmptyState from '../ui/EmptyState'
 import NyaaMeta from '../ui/NyaaMeta'
+import ReleaseTags from '../ui/ReleaseTags'
 
 interface TorrentHistorySectionProps {
 	torrentHistoryFilter: ReturnType<typeof useTorrentHistoryFilter>
@@ -27,12 +29,25 @@ export default function TorrentHistorySection(props: TorrentHistorySectionProps)
 
 	// Every change first puts the torrent back in the pending queue (dropping its old
 	// decisions), then resolves it through the same actions as the Pending queue.
-	async function changeDecision(torrentId: string, title: string, page: number, action: DecisionAction) {
+	// Blocking asks first which variant to block, so the reset only happens on confirm.
+	async function changeDecision(torrent: TorrentHistoryItem, action: DecisionAction) {
+		const { torrentId, item: { title, page } } = torrent
+		if (action === 'blacklist') {
+			props.torrentHistoryFilter.openBlacklistModal({
+				torrentId,
+				series: torrent.item.seriesBaseRaw,
+				resolution: torrent.item.resolution,
+				title,
+				submit: async (tags) => {
+					await props.dashboardActions.resetDecisionToPending(torrentId)
+					await props.bootstrapWorkflow.blacklistQueueItem(torrentId, title, page, tags)
+				},
+			})
+			return
+		}
 		await props.dashboardActions.resetDecisionToPending(torrentId)
 		if (action === 'approve') {
 			await props.bootstrapWorkflow.approveQueueItem(torrentId, title, page)
-		} else if (action === 'blacklist') {
-			await props.bootstrapWorkflow.blacklistQueueItem(torrentId, title, page)
 		} else if (action === 'skip') {
 			await props.bootstrapWorkflow.skipQueueItem(torrentId, title, page)
 		}
@@ -120,6 +135,7 @@ export default function TorrentHistorySection(props: TorrentHistorySectionProps)
 												<p class="wrap-break-word text-wrap font-medium text-white">{torrent.item.title}</p>
 											<span class={statusTagClass(torrent.status)}>{torrent.status}</span>
 										</div>
+												<ReleaseTags title={torrent.item.title} />
 												<NyaaMeta torrentId={torrent.torrentId} category={torrent.item.category} sizeText={torrent.item.sizeText} />
 												<p class="wrap-break-word text-xs text-slate-400">{torrent.item.seriesBaseRaw} · {torrent.item.resolution} · page {torrent.item.page}</p>
 												<p class="wrap-break-word text-xs text-slate-400">{torrent.reason}</p>
@@ -140,7 +156,7 @@ export default function TorrentHistorySection(props: TorrentHistorySectionProps)
 															class="block w-full rounded-lg px-3 py-1.5 text-left text-xs text-slate-200 hover:bg-white/10"
 															onClick={(event) => {
 																event.currentTarget.closest('details')?.removeAttribute('open')
-																void changeDecision(torrent.torrentId, torrent.item.title, torrent.item.page, option.action)
+																void changeDecision(torrent, option.action)
 															}}
 														>
 															{option.label}

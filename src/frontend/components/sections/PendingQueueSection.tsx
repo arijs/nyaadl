@@ -3,14 +3,18 @@ import type { Accessor } from 'solid-js'
 import type { StatusResponse } from '../../../shared/api'
 import type { useDashboardActions } from '../../hooks/useDashboardActions'
 import type { useBootstrapWorkflow } from '../../hooks/useBootstrapWorkflow'
+import type { useTorrentHistoryFilter } from '../../hooks/useTorrentHistoryFilter'
 import ActionButton from '../ui/ActionButton'
 import EmptyState from '../ui/EmptyState'
 import NyaaMeta from '../ui/NyaaMeta'
+import ReleaseTags from '../ui/ReleaseTags'
 
 interface PendingQueueSectionProps {
 	status: Accessor<StatusResponse | undefined>
 	dashboardActions: ReturnType<typeof useDashboardActions>
 	bootstrapWorkflow: ReturnType<typeof useBootstrapWorkflow>
+	// Owns the blacklist confirmation modal (series + resolution, or a single variant).
+	torrentHistoryFilter: ReturnType<typeof useTorrentHistoryFilter>
 }
 
 function splitErrorMessage(message: string): { main: string; context?: string } {
@@ -67,6 +71,7 @@ export default function PendingQueueSection(props: PendingQueueSectionProps) {
 								<div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
 									<div class="min-w-0 max-w-full">
 										<p class="break-words text-wrap font-medium text-white">{item.item.title}</p>
+										<ReleaseTags title={item.item.title} />
 										<NyaaMeta torrentId={item.torrentId} category={item.item.category} sizeText={item.item.sizeText} />
 										<p class="mt-1 break-words text-xs text-slate-400">{item.item.seriesBaseRaw} · {item.item.resolution} · page {item.item.page}</p>
 										<p class="mt-1 break-words text-xs text-slate-400">
@@ -85,7 +90,13 @@ export default function PendingQueueSection(props: PendingQueueSectionProps) {
 									<div class="flex flex-wrap items-center gap-2 shrink-0">
 										<span class="rounded-full border border-sky-400/20 bg-sky-400/10 px-3 py-1 text-xs font-medium text-sky-200">{item.status}</span>
 										<ActionButton label="Approve" onClick={() => props.bootstrapWorkflow.approveQueueItem(item.torrentId, item.item.title, item.item.page)} compact />
-										<ActionButton label="Blacklist" onClick={() => props.bootstrapWorkflow.blacklistQueueItem(item.torrentId, item.item.title, item.item.page)} compact />
+										<ActionButton label="Blacklist" onClick={() => props.torrentHistoryFilter.openBlacklistModal({
+											torrentId: item.torrentId,
+											series: item.seriesKey ?? item.item.seriesBaseRaw,
+											resolution: item.item.resolution,
+											title: item.item.title,
+											submit: (tags) => props.bootstrapWorkflow.blacklistQueueItem(item.torrentId, item.item.title, item.item.page, tags),
+										})} compact />
 										<ActionButton label="Skip" onClick={() => props.bootstrapWorkflow.skipQueueItem(item.torrentId, item.item.title, item.item.page)} compact />
 									</div>
 								</div>

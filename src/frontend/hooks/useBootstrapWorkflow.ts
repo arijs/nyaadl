@@ -1,6 +1,7 @@
 import { createEffect, createSignal } from 'solid-js'
 import type { Accessor } from 'solid-js'
 import type { FolderOptionsData, StatusResponse } from '../../shared/api'
+import type { ReleaseTags } from '../../shared/releaseTitle'
 import type { BootstrapDiscoveryResult, WatchTargetsIssue } from '../../shared/types'
 import { getJson, postJson, postJsonBody, requestJson } from '../lib/httpClient'
 import type { BootstrapCursor } from '../types'
@@ -213,11 +214,14 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 		continueDiscovery?: boolean
 		rootPath?: string
 		seriesFolder?: string
+		tags?: ReleaseTags
 	}) {
 		try {
 			clearQueueActionError(params.torrentId)
 			if (params.action === 'approve' && params.rootPath && params.seriesFolder) {
 				await postJsonBody(`/api/pending/${params.torrentId}/approve`, { rootPath: params.rootPath, seriesFolder: params.seriesFolder })
+			} else if (params.action === 'blacklist' && params.tags) {
+				await postJsonBody(`/api/pending/${params.torrentId}/blacklist`, { tags: params.tags })
 			} else {
 				await postJson(`/api/pending/${params.torrentId}/${params.action}`)
 			}
@@ -244,6 +248,8 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 						continueDiscovery: params.continueDiscovery ?? false,
 						fromTitle: optionsResponse.data.fromTitle,
 						fromFilename: optionsResponse.data.fromFilename,
+						fromRomaji: optionsResponse.data.fromRomaji,
+						fromEnglish: optionsResponse.data.fromEnglish,
 						watchRoots: optionsResponse.data.watchRoots,
 					})
 					await Promise.resolve(options.refetch())
@@ -306,6 +312,7 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 		action: 'approve' | 'blacklist' | 'skip'
 		title: string
 		page?: number
+		tags?: ReleaseTags
 	}) {
 		const activeTorrentId = options.bootstrap()?.actionItem?.torrentId
 		await resolvePendingItemAction({
@@ -314,6 +321,7 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 			title: params.title,
 			page: params.page,
 			continueDiscovery: activeTorrentId === params.torrentId,
+			tags: params.tags,
 		})
 	}
 
@@ -321,8 +329,9 @@ export function useBootstrapWorkflow(options: UseBootstrapWorkflowOptions) {
 		await resolveQueueItemAction({ torrentId, action: 'approve', title, page })
 	}
 
-	async function blacklistQueueItem(torrentId: string, title: string, page?: number) {
-		await resolveQueueItemAction({ torrentId, action: 'blacklist', title, page })
+	// tags: block only this variant of the series (see BlacklistConfirmModal); none blocks series + resolution.
+	async function blacklistQueueItem(torrentId: string, title: string, page?: number, tags?: ReleaseTags) {
+		await resolveQueueItemAction({ torrentId, action: 'blacklist', title, page, tags })
 	}
 
 	async function skipQueueItem(torrentId: string, title: string, page?: number) {
