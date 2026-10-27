@@ -40,3 +40,10 @@ test('deriveFolderNameFromTitle strips trailing finale markers from the folder n
 	const folder = deriveFolderNameFromTitle('[Erai-raws] Kaiju No.8 - 12 END [1080p][ABCDEF12]')
 	assert.equal(folder.onlyRes, '[Erai-raws] Kaiju No.8 [1080p]')
 })
+
+test('ToonsHub SxxExx titles reduce to the series name and an Erai-style folder name', () => {
+	const title = '[ToonsHub] Even the Student Council Has Its Holes S01E03 REPACK 1080p UNCENSORED ADN WEB-DL AAC2.0 H.264 (Seitokai ni mo Ana wa Aru!, Multi-Subs)'
+	assert.equal(deriveSeriesBase(title), 'even the student council has its holes')
+	assert.equal(deriveSeriesBase('[ToonsHub] Some Show S02E05 1080p WEB-DL.mkv'), 'some show s02')
+	assert.equal(deriveFolderNameFromTitle(title).onlyRes, '[ToonsHub] Even the Student Council Has Its Holes [1080p]')
+})

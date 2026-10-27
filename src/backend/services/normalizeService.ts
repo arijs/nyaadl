@@ -1,5 +1,7 @@
 const reWhitespace = /\s+/g
-const reReleasePrefix = /^\[Erai-raws\]\s*/i
+const reReleasePrefix = /^\[(?:Erai-raws|ToonsHub)\]\s*/i
+// "[ToonsHub] Name S01E03 REPACK 1080p ..." has no "- 03" nor bracketed metadata.
+const reToonsHubTitle = /^(\[ToonsHub\]\s*.+?)\s+S(\d{1,2})E(\d{1,4}(?:v\d+)?)\b\s*(.*)$/i
 // Optional label sitting between the hyphen and the episode number, e.g. "- Special 03",
 // "- OVA 02". Without this the label + number leaks into the series key and every special
 // is treated as a distinct series.
@@ -19,10 +21,20 @@ const reInnerTitleHyphen = /(?<=[a-z0-9])-(?=[a-z0-9])/g
 
 const reFolderEpisodeBeforeMetadata = new RegExp(`\\s*-\\s*(?:${episodeLabelSource})?\\d{1,4}(?:v\\d+)?${episodeTrailerSource}(?:\\s*\\([^)]*\\))?(?=(?:\\s*(?:\\[[^\\]]*\\]|\\([^)]*\\)))*\\s*$)`, 'i')
 
+// Rewrites a ToonsHub title into the Erai shape "[ToonsHub] Name - 03 [metadata]" so the
+// episode and metadata rules below apply to it.
+// ponytail: season 1 is dropped (usually unnamed); later seasons keep "S02" in the series name.
+function canonicalizeToonsHubTitle(value: string): string {
+	return value.replace(reToonsHubTitle, (_match, name: string, season: string, episode: string, metadata: string) => {
+		const seasonPart = Number(season) === 1 ? '' : ` S${season}`
+		return `${name}${seasonPart} - ${episode}${metadata ? ` [${metadata}]` : ''}`
+	})
+}
+
 export function normalizeText(value: string): string {
-	return value
+	return canonicalizeToonsHubTitle(value
 		.trim()
-		.replace(reVideoExtension, '')
+		.replace(reVideoExtension, ''))
 		.replace(reReleasePrefix, '')
 		.replace(reEpisodeSuffix, '')
 		.replace(reEpisodeBeforeMetadata, '')
@@ -86,9 +98,9 @@ function expandPostProcessedCandidateVariants(candidate: string): string[] {
 }
 
 export function deriveFolderNameFromTitle(rawTitle: string): { fullMeta: string, onlyRes: string } {
-	const fullMeta = rawTitle
+	const fullMeta = canonicalizeToonsHubTitle(rawTitle
 		.trim()
-		.replace(reVideoExtension, '')
+		.replace(reVideoExtension, ''))
 		.replace(reFolderEpisodeBeforeMetadata, '')
 		.replace(reTrailingHash, '')
 		.replace(reWhitespace, ' ')
