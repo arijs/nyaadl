@@ -381,6 +381,7 @@ Visible items:
 - status chips with counts for `All`, `auto_downloaded`, `already_downloaded`, `blocked`, `pending`, `approved`, and `skipped`
 - paginated history cards showing the torrent title, final status badge, series base name, resolution, source page, decision reason, published timestamp, seeders, leechers, downloads, and torrent ID
 - pagination controls: `first`, `prev`, `next`, `last`
+- `Alterar decisão ▾` menu (on hover) with `Voltar para pendente`, `Aprovar`, `Bloquear série + resolução`, and `Pular`: every option first drops every decision recorded for that torrent and puts it back in the Pending queue, as if it had just been scraped as pending; the other options then resolve it with the same action as the Pending queue (approve may open the destination folder modal)
 
 This is the best place to audit what happened after a scraping session.
 

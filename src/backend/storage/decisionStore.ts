@@ -8,12 +8,14 @@ import { isDecisionRecord, writeJsonFileAtomic, writeTextFileAtomic } from './js
 // appends records that were pushed since the last save, so the cost of a save
 // no longer grows with the size of the history. The one exception is a backfill
 // of an already persisted record: markDirty() makes the next save rewrite that
-// record's month file.
+// record's month file. Records removed from the history (forget()) make the
+// next save rewrite every month from the in-memory list.
 
 export interface DecisionStore {
 	load(): Promise<DecisionRecord[]>
 	save(items: DecisionRecord[]): Promise<void>
 	markDirty(records: DecisionRecord[]): void
+	forget(records: DecisionRecord[]): void
 }
 
 // Only TorrentItem fields (plus internalNames, read back by bootstrap replay) are
@@ -80,6 +82,7 @@ export function createDecisionStore(dirPath: string, legacyFilePath: string): De
 	let persistedCount = 0
 	let saveQueue: Promise<void> = Promise.resolve()
 	const dirtyMonths = new Set<string>()
+	let rewriteAll = false
 
 	function monthFilePath(month: string): string {
 		return path.join(dirPath, `${month}.jsonl`)
@@ -204,9 +207,30 @@ export function createDecisionStore(dirPath: string, legacyFilePath: string): De
 		}
 	}
 
+	// ponytail: removals rewrite the whole history; fine while forget() stays a rare manual action.
+	function forget(records: DecisionRecord[]): void {
+		markDirty(records)
+		rewriteAll = true
+	}
+
+	async function rewriteAllMonths(items: DecisionRecord[]): Promise<void> {
+		await mkdir(dirPath, { recursive: true })
+		const months = new Set([...dirtyMonths, ...items.map((record) => decisionMonthKey(record.createdAtUtc))])
+		for (const month of months) {
+			await writeTextFileAtomic(monthFilePath(month), serializeDecisions(items.filter((record) => decisionMonthKey(record.createdAtUtc) === month)))
+		}
+		dirtyMonths.clear()
+		persistedCount = items.length
+	}
+
 	function save(items: DecisionRecord[]): Promise<void> {
 		// Serialize saves so overlapping requests never append the same tail twice.
 		const run = saveQueue.then(async () => {
+			if (rewriteAll) {
+				rewriteAll = false
+				await rewriteAllMonths(items)
+				return
+			}
 			await rewriteDirtyMonths(items)
 			await appendUnsaved(items)
 		})
@@ -214,5 +238,5 @@ export function createDecisionStore(dirPath: string, legacyFilePath: string): De
 		return run
 	}
 
-	return { load, save, markDirty }
+	return { load, save, markDirty, forget }
 }

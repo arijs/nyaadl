@@ -93,7 +93,7 @@ export default function App() {
 
 				<BlacklistManagerSection blacklistManager={blacklistManager} />
 
-				<TorrentHistorySection torrentHistoryFilter={torrentHistoryFilter} />
+				<TorrentHistorySection torrentHistoryFilter={torrentHistoryFilter} dashboardActions={dashboardActions} bootstrapWorkflow={bootstrapWorkflow} />
 				<BootstrapSessionLogSection bootstrapLog={bootstrapLog} />
 			</main>
 		</div>

@@ -1,4 +1,6 @@
 import { createSignal, For, Show } from 'solid-js'
+import type { useBootstrapWorkflow } from '../../hooks/useBootstrapWorkflow'
+import type { useDashboardActions } from '../../hooks/useDashboardActions'
 import type { useTorrentHistoryFilter } from '../../hooks/useTorrentHistoryFilter'
 import { statusTagClass } from '../../lib/statusTag'
 import type { TorrentFilter } from '../../types'
@@ -7,10 +9,34 @@ import NyaaMeta from '../ui/NyaaMeta'
 
 interface TorrentHistorySectionProps {
 	torrentHistoryFilter: ReturnType<typeof useTorrentHistoryFilter>
+	dashboardActions: ReturnType<typeof useDashboardActions>
+	bootstrapWorkflow: ReturnType<typeof useBootstrapWorkflow>
 }
+
+type DecisionAction = 'pending' | 'approve' | 'blacklist' | 'skip'
+
+const decisionOptions: Array<{ action: DecisionAction; label: string }> = [
+	{ action: 'pending', label: 'Voltar para pendente' },
+	{ action: 'approve', label: 'Aprovar' },
+	{ action: 'blacklist', label: 'Bloquear série + resolução' },
+	{ action: 'skip', label: 'Pular' },
+]
 
 export default function TorrentHistorySection(props: TorrentHistorySectionProps) {
 	const [collapsed, setCollapsed] = createSignal(true)
+
+	// Every change first puts the torrent back in the pending queue (dropping its old
+	// decisions), then resolves it through the same actions as the Pending queue.
+	async function changeDecision(torrentId: string, title: string, page: number, action: DecisionAction) {
+		await props.dashboardActions.resetDecisionToPending(torrentId)
+		if (action === 'approve') {
+			await props.bootstrapWorkflow.approveQueueItem(torrentId, title, page)
+		} else if (action === 'blacklist') {
+			await props.bootstrapWorkflow.blacklistQueueItem(torrentId, title, page)
+		} else if (action === 'skip') {
+			await props.bootstrapWorkflow.skipQueueItem(torrentId, title, page)
+		}
+	}
 
 	return (
 		<section class="rounded-3xl border border-white/10 bg-slate-950/80 p-6 shadow-lg shadow-black/20 xl:col-span-2">
@@ -102,6 +128,27 @@ export default function TorrentHistorySection(props: TorrentHistorySectionProps)
 										</p>
 									</div>
 									<div class="flex flex-col items-end gap-2">
+										<details class="relative opacity-0 pointer-events-none transition-opacity duration-150 group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto open:opacity-100 open:pointer-events-auto">
+											<summary class="cursor-pointer list-none rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium text-slate-300 hover:bg-white/10">
+												Alterar decisão ▾
+											</summary>
+											<div class="absolute right-0 z-10 mt-1 min-w-48 rounded-xl border border-white/10 bg-slate-900 p-1 shadow-lg shadow-black/40">
+												<For each={decisionOptions}>
+													{(option) => (
+														<button
+															type="button"
+															class="block w-full rounded-lg px-3 py-1.5 text-left text-xs text-slate-200 hover:bg-white/10"
+															onClick={(event) => {
+																event.currentTarget.closest('details')?.removeAttribute('open')
+																void changeDecision(torrent.torrentId, torrent.item.title, torrent.item.page, option.action)
+															}}
+														>
+															{option.label}
+														</button>
+													)}
+												</For>
+											</div>
+										</details>
 										<button
 											type="button"
 											class="rounded-full border border-rose-400/30 bg-rose-400/10 px-3 py-1 text-[11px] font-medium text-rose-200 opacity-0 pointer-events-none transition-opacity duration-150 hover:bg-rose-400/20 group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto"

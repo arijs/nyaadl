@@ -37,6 +37,10 @@ export function useDashboardActions(options: UseDashboardActionsOptions) {
 		await refreshAfter(postJson(`/api/pending/${torrentId}/skip`))
 	}
 
+	async function resetDecisionToPending(torrentId: string) {
+		await refreshAfter(postJson(`/api/torrents/${torrentId}/reset-pending`))
+	}
+
 	async function retryQbittorrentFailure(torrentId: string, config: { baseUrl: string; username: string; password: string }) {
 		await refreshAfter((async () => {
 			await postJsonBody('/api/qbittorrent/config', config)
@@ -82,6 +86,7 @@ export function useDashboardActions(options: UseDashboardActionsOptions) {
 		approvePending,
 		blacklistPending,
 		skipPending,
+		resetDecisionToPending,
 		retryQbittorrentFailure,
 		saveQbittorrentConfig,
 		saveEraiRawsSession,

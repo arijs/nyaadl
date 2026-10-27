@@ -23,7 +23,7 @@ import { applyTorrentItemBackfill, backfillFromLocalSnapshots } from './services
 import { parseTorrentMetainfo } from './services/torrentMetainfoService'
 import { loadBlacklist, saveBlacklist, saveBootstrapDiscovery, saveDecisions, saveLastProcessed, savePending, saveQbittorrentSubmitted } from './services/stateService'
 import { buildNormalizedKey, deriveSeriesBase, deriveFolderNameFromTitle } from './services/normalizeService'
-import { buildSkippedDecisions, listDecisionTorrentIds, listPendingTorrentIds } from './services/stateService'
+import { buildSkippedDecisions, forgetDecisions, listDecisionTorrentIds, listPendingTorrentIds, resetTorrentToPending } from './services/stateService'
 import { buildTorrentHistoryPage } from './services/torrentHistoryService'
 import { buildBlacklistPage, parseBlacklistEntry } from './services/blacklistService'
 import { buildWatchTargetPage } from './services/watchTargetService'
@@ -627,6 +627,21 @@ async function main(): Promise<void> {
 			resolutionFilter: body?.resolutionFilter,
 		})
 		return { success: true, data: page }
+	})
+	app.post('/api/torrents/:id/reset-pending', async (event) => {
+		const torrentId = event.context.params?.id
+		if (!torrentId) {
+			throw badRequest('Missing torrent id')
+		}
+		const result = resetTorrentToPending(decisionsState, pendingState, torrentId)
+		if (!result) {
+			throw notFound('No decision history for torrent id')
+		}
+		forgetDecisions(result.removed)
+		hydrateDownloadedTorrents()
+		await savePending(pendingState)
+		await saveDecisions(decisionsState)
+		return { success: true, data: result.decision }
 	})
 	app.get('/api/blacklist', async (event) => {
 		const persistedItems = await loadBlacklist()

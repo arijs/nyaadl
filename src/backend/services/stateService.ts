@@ -120,6 +120,11 @@ export function markDecisionsDirty(records: DecisionRecord[]): void {
 	decisionStore.markDirty(records)
 }
 
+// Records removed from decisionsState: the next saveDecisions rewrites the history from memory.
+export function forgetDecisions(records: DecisionRecord[]): void {
+	decisionStore.forget(records)
+}
+
 export async function loadQbittorrentFailures(): Promise<QbittorrentFailureItem[]> {
 	const file = await readJsonFile<QbittorrentFailuresFile>(qbittorrentFailuresPath, { items: [] }, isQbittorrentFailuresFile)
 	return file.items
@@ -163,6 +168,38 @@ export function buildSkippedDecisions(items: PendingItem[], createdAtUtc = new D
 		createdAtUtc,
 		item: pendingItem.item,
 	}))
+}
+
+// Drops every decision and queue entry of a torrent, then queues it again as if it had
+// just been scraped into pending. Returns the dropped records (for forgetDecisions).
+export function resetTorrentToPending(decisions: DecisionRecord[], pending: PendingItem[], torrentId: string, createdAtUtc = new Date().toISOString()): { removed: DecisionRecord[]; decision: DecisionRecord } | undefined {
+	const removed = decisions.filter((decision) => decision.torrentId === torrentId)
+	const latest = removed.at(-1)
+	if (!latest) {
+		return undefined
+	}
+	for (let index = decisions.length - 1; index >= 0; index -= 1) {
+		if (decisions[index]!.torrentId === torrentId) {
+			decisions.splice(index, 1)
+		}
+	}
+	for (let index = pending.length - 1; index >= 0; index -= 1) {
+		if (pending[index]!.torrentId === torrentId) {
+			pending.splice(index, 1)
+		}
+	}
+	const reason = 'decision reset to pending by user'
+	const decision: DecisionRecord = { torrentId, status: 'pending', reason, createdAtUtc, item: latest.item }
+	decisions.push(decision)
+	pending.push({
+		torrentId,
+		status: 'pending',
+		reason,
+		item: latest.item,
+		seriesKey: (latest as DecisionRecord & { seriesKey?: string }).seriesKey,
+		internalNames: (latest.item as DecisionRecord['item'] & { internalNames?: string[] }).internalNames,
+	})
+	return { removed, decision }
 }
 
 export async function loadLastProcessed(): Promise<LastProcessed> {

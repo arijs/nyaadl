@@ -256,3 +256,26 @@ test('a corrupt legacy file aborts loading instead of silently wiping history', 
 		assert.deepEqual(await readdir(dataRoot), ['decisions.json'])
 	})
 })
+
+test('forgotten records are dropped from disk by rewriting every month, then saves go back to appending', async () => {
+	await withTempDataRoot(async ({ dirPath, legacyPath }) => {
+		const store = createDecisionStore(dirPath, legacyPath)
+		const items = await store.load()
+		items.push(decision('1', '2026-09-01T00:00:00.000Z'), decision('2', '2026-10-01T00:00:00.000Z'), decision('1', '2026-10-02T00:00:00.000Z'))
+		await store.save(items)
+
+		const removed = items.filter((record) => record.torrentId === '1')
+		items.splice(0, items.length, ...items.filter((record) => record.torrentId !== '1'))
+		store.forget(removed)
+		items.push(decision('1', '2026-10-27T00:00:00.000Z'))
+		await store.save(items)
+
+		assert.deepEqual(await readLines(path.join(dirPath, '2026-09.jsonl')), [])
+		const reloaded = await createDecisionStore(dirPath, legacyPath).load()
+		assert.deepEqual(reloaded.map((record) => [record.torrentId, record.createdAtUtc]), [['2', '2026-10-01T00:00:00.000Z'], ['1', '2026-10-27T00:00:00.000Z']])
+
+		items.push(decision('3', '2026-10-28T00:00:00.000Z'))
+		await store.save(items)
+		assert.equal((await readLines(path.join(dirPath, '2026-10.jsonl'))).length, 3)
+	})
+})
