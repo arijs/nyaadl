@@ -114,6 +114,13 @@ test('extractReleaseFingerprint differentiates MultiSub from mono-sub releases',
 	assert.equal(revision.episode, '04v2')
 })
 
+test('extractReleaseFingerprint reads the episode from an SxxExx token', () => {
+	const fingerprint = extractReleaseFingerprint('[ToonsHub] Even the Student Council Has Its Holes S01E03 REPACK 1080p UNCENSORED ADN WEB-DL AAC2.0 H.264 (Seitokai ni mo Ana wa Aru!, Multi-Subs)')
+	assert.equal(fingerprint.episode, '03')
+	assert.equal(extractReleaseFingerprint('Some Show S02E12v2 1080p.mkv').episode, '12v2')
+	assert.equal(extractReleaseFingerprint('[Erai-raws] Some Show - 07 [1080p CR WEB-DL AVC AAC].mkv').episode, '07')
+})
+
 test('countMatchingLocalFiles matches abbreviated local filenames through watch target aliases', async () => {
 	const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'nyaadl-megami-'))
 	const folderName = '[Erai-raws] Megami ~Isekai Tensei Nani ni Naritai Desu ka~ Ore ~Yuusha no Rokkotsu de~ [480p]'

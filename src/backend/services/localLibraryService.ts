@@ -4,7 +4,8 @@ import type { WatchTarget } from '@shared/types'
 import { buildMatchCandidates, extractResolution, normalizeText } from './normalizeService'
 
 const videoExtensions = new Set(['.mkv', '.mp4', '.avi', '.m4v', '.mov', '.wmv'])
-const reEpisode = /\s-\s(\d{1,4}(?:v\d+)?)\b/i
+// "Title - 03" or "Title S01E03" (the season is dropped, so both styles of the same episode match).
+const reEpisode = /\s-\s(\d{1,4}(?:v\d+)?)\b|\bS\d{1,2}E(\d{1,4}(?:v\d+)?)\b/i
 const reEpisodeTag = /\s-\s\d{1,4}(?:v\d+)?\s*(\([^)]+\))/i
 const reFileHash = /\[([a-f0-9]{8})\](?=\.[^.]+$|$)/i
 const reMultiSubTag = /\[\s*multisub\s*\]/i
@@ -75,7 +76,8 @@ function extractSource(value: string): string | undefined {
 }
 
 export function extractReleaseFingerprint(value: string): ReleaseFingerprint {
-	const episode = reEpisode.exec(value)?.[1]
+	const episodeMatch = reEpisode.exec(value)
+	const episode = episodeMatch?.[1] ?? episodeMatch?.[2]
 	const source = normalizeToken(extractSource(value))
 	const episodeTag = normalizeToken(reEpisodeTag.exec(value)?.[1])
 	const fileHash = normalizeToken(reFileHash.exec(value)?.[1])
