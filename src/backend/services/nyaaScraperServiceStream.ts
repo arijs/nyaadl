@@ -1,4 +1,5 @@
 import { TreeMatcher, getParser, treeWalk, nodeGetAttr, nodeExtractText, nodeFindFirstDescendant, nodeExtractNodeTexts } from '@arijs/stream-xml-parser'
+import { decodeHTML } from 'entities'
 import type { TorrentItem } from '@shared/types'
 import { buildMatchCandidates, extractResolution, sanitizePathSegment } from './normalizeService'
 import { buildNyaaQueryUrl } from './nyaaQueryService'
@@ -68,9 +69,10 @@ function parseRow(rowNode: unknown, page: number, elAdapter: AdapterLike): Torre
 	}
 
 	const titleValue = nodeGetAttr({node: viewAnchor, elAdapter, targetName: 'title'}) ?? nodeExtractText({node: viewAnchor, elAdapter})
-	const title = sanitizePathSegment(titleValue)
+	// the stream parser hands attributes back raw, so entities like &amp; must be decoded here
+	const title = sanitizePathSegment(decodeHTML(titleValue))
 	const categoryAnchor = nodeFindFirstDescendant({root: rowNode, elAdapter, matcher: categoryLinkMatcher as unknown as UnknownRecord})
-	const category = categoryAnchor ? nodeGetAttr({node: categoryAnchor, elAdapter, targetName: 'title'}) ?? undefined : undefined
+	const category = categoryAnchor ? decodeHTML(nodeGetAttr({node: categoryAnchor, elAdapter, targetName: 'title'}) ?? '') || undefined : undefined
 	const texts = nodeExtractNodeTexts({node: rowNode, elAdapter}) as string[]
 	const timestampCell = nodeFindFirstDescendant({root: rowNode, elAdapter, matcher: timestampCellMatcher as unknown as UnknownRecord})
 	const publishedAt = timestampCell ? nodeGetAttr({node: timestampCell, elAdapter, targetName: 'data-timestamp'}) : undefined

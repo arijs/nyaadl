@@ -85,3 +85,12 @@ test('scrapeNyaaPageHtml reads the category of each list row', async () => {
 	assert.equal(items[0]?.category, 'Anime - English-translated')
 	assert.equal(items[0]?.sizeText, '1.3 GiB')
 })
+
+test('scrapeNyaaPageHtml decodes HTML entities in the title', async () => {
+	const html = `<table class="torrent-list"><tbody><tr>
+		<td colspan="2"><a href="/view/8" title="[AOmundson] X + Specials &amp; Extras &#39;BD&#39;">x</a></td>
+		<td><a href="/download/8.torrent">d</a></td>
+	</tr></tbody></table>`
+	const { items } = await scrapeNyaaPageHtml({ pageNumber: 1, html })
+	assert.equal(items[0]?.title, `[AOmundson] X + Specials & Extras 'BD'`)
+})
