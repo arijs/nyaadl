@@ -19,7 +19,7 @@ import {
 } from './decisionWorkflowService'
 import { downloadTorrentFile, findDownloadedTorrentFileById } from './downloaderService'
 import { applyTorrentItemBackfill } from './decisionBackfillService'
-import { findExistingLocalMatchByTitle, type ExistingLocalMatch } from './localLibraryService'
+import { buildTorrentVideoFiles, findExistingLocalMatch, findExistingLocalMatchByNames, findExistingLocalMatchByTitle, type ExistingLocalMatch } from './localLibraryService'
 import { buildTorrentMatchResult, isTorrentBlacklisted, matchTorrentToWatchTargets } from './matchingService'
 import { scrapeNyaaPage } from './nyaaScraperServiceStream'
 import { buildNyaaQueryKey, normalizeNyaaQuery } from './nyaaQueryService'
@@ -112,7 +112,7 @@ async function findReplayLocalMatch(decision: DecisionRecord, aliases: Record<st
 	if (!target) {
 		return undefined
 	}
-	return findExistingLocalMatchByTitle(target, decision.item.title)
+	return await findExistingLocalMatchByNames(target, getDecisionInternalNames(decision)) ?? findExistingLocalMatchByTitle(target, decision.item.title)
 }
 
 async function processReplayedDecision(
@@ -389,12 +389,11 @@ async function processBootstrapItem(
 	}
 
 	if (titleMatchedTarget) {
-		const existingLocal = await findExistingLocalMatchByTitle(titleMatchedTarget, item.title)
-		if (existingLocal) {
+		const recordAlreadyDownloaded = (reason: string) => {
 			const decision = createDecisionRecord(
 				{ ...item, seriesBaseRaw: quickMatch.seriesBaseRaw, resolution: quickMatch.resolution, matchCandidates: quickMatch.matchCandidates },
 				'already_downloaded',
-				existingLocal.reason,
+				reason,
 			)
 			decisionsState.push(decision)
 			processedTorrentIds.add(item.torrentId)
@@ -408,7 +407,21 @@ async function processBootstrapItem(
 			return { inspectedCount }
 		}
 
+		const existingByTitle = await findExistingLocalMatchByTitle(titleMatchedTarget, item.title)
+		if (existingByTitle) {
+			return recordAlreadyDownloaded(existingByTitle.reason)
+		}
+
 		const downloadedTorrent = await downloadTorrentFile(item)
+		// A batch title ("01 ~ 03") names no single episode: compare the torrent's own files instead.
+		const metainfo = await readFile(downloadedTorrent.filePath)
+			.then((buffer) => parseTorrentMetainfo(buffer))
+			.catch(() => undefined)
+		const existingFiles = metainfo ? await findExistingLocalMatch(titleMatchedTarget, item.title, buildTorrentVideoFiles(metainfo.videoNames, metainfo.files)) : undefined
+		if (existingFiles?.status === 'exact') {
+			return recordAlreadyDownloaded(existingFiles.reason)
+		}
+
 		const matchedItem = { ...item, seriesBaseRaw: quickMatch.seriesBaseRaw, resolution: quickMatch.resolution, matchCandidates: quickMatch.matchCandidates }
 		const submitResult = await submitDownloadedTorrent({
 			item: matchedItem,
