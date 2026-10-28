@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
 import type { WatchTarget } from '@shared/types'
-import { analyzeFingerprintCombos, countMatchingLocalFiles, extractReleaseFingerprint } from './localLibraryService.js'
+import { analyzeFingerprintCombos, buildTorrentVideoFiles, countMatchingLocalFiles, extractReleaseFingerprint, findExistingLocalMatch, findExistingLocalMatchByNames } from './localLibraryService.js'
 import { buildWatchTargetMatchCandidates } from './watchlistService.js'
 
 const repoRoot = path.resolve(process.cwd())
@@ -244,6 +244,78 @@ test('analyzeFingerprintCombos counts episode revisions like 04v2 as distinct en
 		assert.equal(combos[0]?.count, 12)
 		assert.equal(combos[0]?.minEpisode, '1')
 		assert.equal(combos[0]?.maxEpisode, '11')
+	} finally {
+		await rm(tempRoot, { recursive: true, force: true })
+	}
+})
+
+test('findExistingLocalMatchByNames and findExistingLocalMatch find a batch saved in the torrent root folder', async () => {
+	const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'nyaadl-batch-'))
+	const folderName = '[Erai-raws] Watashi no Shiawase na Kekkon Special [720p]'
+	const targetFolder = path.join(tempRoot, folderName)
+	const batchFolder = path.join(targetFolder, '[Erai-raws] Watashi no Shiawase na Kekkon Special - 01 ~ 03 [720p NF WEB-DL AVC AAC][MultiSub]')
+	const seriesKey = 'watashi no shiawase na kekkon special'
+	const names = [['01', 'AB37FB46'], ['02', '1C7BE105'], ['03', '84EEB960']]
+		.map(([episode, hash]) => `[Erai-raws] Watashi no Shiawase na Kekkon Special - ${episode} [720p NF WEB-DL AVC AAC][MultiSub][${hash}].mkv`)
+
+	try {
+		await mkdir(batchFolder, { recursive: true })
+		for (const name of names) {
+			await writeFile(path.join(batchFolder, name), 'x')
+		}
+
+		const watchTarget: WatchTarget = {
+			folderName,
+			folderPath: targetFolder,
+			seriesKey,
+			resolution: '720p',
+			normalizedKey: `${seriesKey}::720p`,
+			matchCandidates: buildWatchTargetMatchCandidates(folderName, seriesKey, seriesKey, {}),
+		}
+
+		const match = await findExistingLocalMatchByNames(watchTarget, names)
+		assert.equal(match?.status, 'exact')
+		assert.equal(match?.localPath, path.join(batchFolder, names[0]!))
+
+		// Not seen before (downloaded outside nyaadl): matched by the torrent's file names and sizes.
+		const title = '[Erai-raws] Watashi no Shiawase na Kekkon Special - 01 ~ 03 [720p NF WEB-DL AVC AAC][MultiSub] [BATCH]'
+		const torrentFiles = buildTorrentVideoFiles(names, names.map((name) => ({ path: [path.basename(batchFolder), name], length: 1 })))
+		const fresh = await findExistingLocalMatch(watchTarget, title, torrentFiles)
+		assert.equal(fresh?.status, 'exact')
+		assert.equal(fresh?.localPath, path.join(batchFolder, names[0]!))
+
+		await rm(path.join(batchFolder, names[2]!))
+		assert.equal(await findExistingLocalMatchByNames(watchTarget, names), undefined)
+	} finally {
+		await rm(tempRoot, { recursive: true, force: true })
+	}
+})
+
+test('local file lookup stops at two subfolder levels and 200 video files', async () => {
+	const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'nyaadl-limits-'))
+	const seriesKey = 'limits'
+	const watchTarget: WatchTarget = {
+		folderName: 'Limits [720p]',
+		folderPath: tempRoot,
+		seriesKey,
+		resolution: '720p',
+		normalizedKey: `${seriesKey}::720p`,
+		matchCandidates: [seriesKey],
+	}
+	const name = 'Limits - 01 [720p].mkv'
+
+	try {
+		await mkdir(path.join(tempRoot, 'a', 'b', 'c'), { recursive: true })
+		await writeFile(path.join(tempRoot, 'a', 'b', 'c', name), 'x')
+		assert.equal(await findExistingLocalMatchByNames(watchTarget, [name]), undefined, 'three levels down is out of reach')
+
+		await writeFile(path.join(tempRoot, 'a', 'b', name), 'x')
+		assert.equal((await findExistingLocalMatchByNames(watchTarget, [name]))?.localPath, path.join(tempRoot, 'a', 'b', name))
+
+		for (let index = 0; index < 200; index++) {
+			await writeFile(path.join(tempRoot, `Other - ${index} [720p].mkv`), '')
+		}
+		assert.equal(await findExistingLocalMatchByNames(watchTarget, [name]), undefined, '200 shallower files fill the limit')
 	} finally {
 		await rm(tempRoot, { recursive: true, force: true })
 	}

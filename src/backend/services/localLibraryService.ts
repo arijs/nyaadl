@@ -103,6 +103,34 @@ function isVideoFile(fileName: string): boolean {
 	return videoExtensions.has(path.extname(fileName).toLowerCase())
 }
 
+const maxSubfolderDepth = 2
+const maxLocalVideoFiles = 200
+
+// Video files under the target folder and up to two subfolder levels down (a batch lands in the
+// torrent's root folder), shallowest first, stopping at 200 files.
+async function listLocalVideoPaths(folderPath: string): Promise<string[]> {
+	const videoPaths: string[] = []
+	let folders = [folderPath]
+	for (let depth = 0; depth <= maxSubfolderDepth && folders.length > 0; depth++) {
+		const subfolders: string[] = []
+		for (const folder of folders) {
+			for (const entry of await readdir(folder, { withFileTypes: true }).catch(() => [])) {
+				const entryPath = path.join(folder, entry.name)
+				if (entry.isDirectory()) {
+					subfolders.push(entryPath)
+				} else if (entry.isFile() && isVideoFile(entry.name)) {
+					videoPaths.push(entryPath)
+					if (videoPaths.length >= maxLocalVideoFiles) {
+						return videoPaths
+					}
+				}
+			}
+		}
+		folders = subfolders
+	}
+	return videoPaths
+}
+
 // Video files in the target folder that belong to the target's series and resolution.
 export async function listMatchingVideoFiles(target: WatchTarget): Promise<string[]> {
 	const folderEntries = await readdir(target.folderPath, { withFileTypes: true }).catch(() => [])
@@ -217,19 +245,14 @@ export async function findExistingLocalMatch(target: WatchTarget, title: string,
 		.concat(titleFingerprint.episode || titleFingerprint.source ? [titleFingerprint] : [])
 	let conflictMatch: ExistingLocalMatch | undefined
 
-	const folderEntries = await readdir(target.folderPath, { withFileTypes: true }).catch(() => [])
-	for (const entry of folderEntries) {
-		if (!entry.isFile() || !isVideoFile(entry.name)) {
-			continue
-		}
-
-		const localPath = path.join(target.folderPath, entry.name)
+	for (const localPath of await listLocalVideoPaths(target.folderPath)) {
+		const localName = path.basename(localPath)
 		const localStat = await stat(localPath).catch(() => undefined)
 		if (!localStat?.isFile()) {
 			continue
 		}
 
-		const localFingerprint = extractReleaseFingerprint(entry.name)
+		const localFingerprint = extractReleaseFingerprint(localName)
 		const sameEpisodeAndSource = candidateFingerprints.find((fingerprint) => {
 			if (!fingerprint.episode || !localFingerprint.episode || fingerprint.episode !== localFingerprint.episode) {
 				return false
@@ -257,13 +280,13 @@ export async function findExistingLocalMatch(target: WatchTarget, title: string,
 			continue
 		}
 
-		const exactFile = torrentVideoFiles.find((file) => file.name === entry.name)
+		const exactFile = torrentVideoFiles.find((file) => file.name === localName)
 		if (exactFile && exactFile.length === localStat.size) {
 			return {
 				status: 'exact',
-				reason: `existing file matches ${entry.name}`,
+				reason: `existing file matches ${localName}`,
 				localPath,
-				localName: entry.name,
+				localName,
 				localSize: localStat.size,
 				episode: localFingerprint.episode,
 				source: localFingerprint.source,
@@ -279,7 +302,7 @@ export async function findExistingLocalMatch(target: WatchTarget, title: string,
 			status: 'conflict',
 			reason: `existing file conflict for episode ${localFingerprint.episode ?? 'unknown'}${localFingerprint.source ? ` / ${localFingerprint.source}` : ''}`,
 			localPath,
-			localName: entry.name,
+			localName,
 			localSize: localStat.size,
 			episode: localFingerprint.episode,
 			source: localFingerprint.source,
@@ -293,25 +316,44 @@ export async function findExistingLocalMatch(target: WatchTarget, title: string,
 	return conflictMatch
 }
 
+// The torrent's own video files, by name. All of them present means the torrent is already downloaded.
+export async function findExistingLocalMatchByNames(target: WatchTarget, names: string[]): Promise<ExistingLocalMatch | undefined> {
+	const videoNames = names.filter((name) => isVideoFile(name))
+	if (videoNames.length === 0) {
+		return undefined
+	}
+
+	const localPathsByName = new Map((await listLocalVideoPaths(target.folderPath)).map((localPath) => [path.basename(localPath), localPath]))
+	const localPaths = videoNames.map((name) => localPathsByName.get(name))
+	const fileStats = await Promise.all(localPaths.map((localPath) => localPath ? stat(localPath).catch(() => undefined) : undefined))
+	if (!fileStats.every((fileStat) => fileStat?.isFile())) {
+		return undefined
+	}
+
+	const localName = videoNames[0]!
+	return {
+		status: 'exact',
+		reason: `existing local files found for ${videoNames.length === 1 ? localName : `${videoNames.length} torrent files`}`,
+		localPath: localPaths[0]!,
+		localName,
+		localSize: fileStats[0]!.size,
+	}
+}
+
 export async function findExistingLocalMatchByTitle(target: WatchTarget, title: string): Promise<ExistingLocalMatch | undefined> {
 	const titleFingerprint = extractReleaseFingerprint(title)
 	if (!titleFingerprint.episode) {
 		return undefined
 	}
 
-	const folderEntries = await readdir(target.folderPath, { withFileTypes: true }).catch(() => [])
-	for (const entry of folderEntries) {
-		if (!entry.isFile() || !isVideoFile(entry.name)) {
-			continue
-		}
-
-		const localPath = path.join(target.folderPath, entry.name)
+	for (const localPath of await listLocalVideoPaths(target.folderPath)) {
+		const localName = path.basename(localPath)
 		const localStat = await stat(localPath).catch(() => undefined)
 		if (!localStat?.isFile()) {
 			continue
 		}
 
-		const localFingerprint = extractReleaseFingerprint(entry.name)
+		const localFingerprint = extractReleaseFingerprint(localName)
 		if (!localFingerprint.episode || localFingerprint.episode !== titleFingerprint.episode) {
 			continue
 		}
@@ -333,9 +375,9 @@ export async function findExistingLocalMatchByTitle(target: WatchTarget, title: 
 
 		return {
 			status: 'exact',
-			reason: `existing local episode/source found for ${entry.name}`,
+			reason: `existing local episode/source found for ${localName}`,
 			localPath,
-			localName: entry.name,
+			localName,
 			localSize: localStat.size,
 			episode: localFingerprint.episode,
 			source: localFingerprint.source,
